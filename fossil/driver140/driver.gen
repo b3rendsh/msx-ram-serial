@@ -1,0 +1,565 @@
+;
+; DRIVER LOADER V2.00
+;
+; (P) 1994 ERIK MAAS
+;
+
+	jp	begin
+
+A_121x_2x	equ	$
+*include 121x-2x.db
+L_121x_2x	equ	$-A_121x_2x
+
+A_121x_3x	equ	$
+*include 121x-3x.db
+L_121x_3x	equ	$-A_121x_3x
+
+A_1250_2x	equ	$
+*include 1250-2x.db
+L_1250_2x	equ	$-A_1250_2x
+
+A_1250_3x	equ	$
+*include 1250-3x.db
+L_1250_3x	equ	$-A_1250_3x
+
+A_sony	equ	$
+*include sony.db
+L_sony	equ	$-A_sony
+
+A_16550	equ	$
+*include 16550.db
+L_16550	equ	$-A_16550
+
+A_fake	equ	$
+*include fake.db
+L_fake	equ	$-A_fake
+
+
+*INCLUDE MACRO.GEN
+
+ld_hl_de	macro
+	ld	h,d
+	ld	l,e
+	endm
+
+
+t_intro	db	"DRIVER LOADER v2.00 - (p) 1996 Erik Maas",13,10,10,"$"
+
+SplitCommand
+	ld	a,(#80) 	; empty line?
+	or	a		; return if so
+	ret	z
+
+	ld	hl,#81		; set pointer1 to begin of line
+	ld	de,CommandPoint ; set pointer2 to begin of pointtab
+	ld	b,a		; set counter
+	inc	b
+SplitCommand_1
+	call	GetHL			; get character
+	ret	z			; return if no char left
+	cp	" "                     ; space?
+	jr	z,SplitCommand_1	; -> eat spaces!
+	cp	"""                     ; string?
+	jr	z,SplitComString	; -> set pointer and return
+	dec	hl
+	ex	de,hl			; new option, add pointer
+	ld	(hl),e			; to list
+	inc	hl
+	ld	(hl),d
+	inc	hl
+	ex	de,hl
+	inc	hl
+	ld	a,e			; end of pointerlist reached?
+	cp	(CommandPoint.mod.256)+2*8
+	ret	z			; return if pointertab full
+SplitCommand_2
+	call	GetHL			; get character
+	ret	z			; return if no char left
+	cp	" "                     ; space?
+	jr	nz,SplitCommand_2	; -> eat all non spaces!
+	jr	SplitCommand_1		; New option
+
+SplitComString
+	ld	(KeyPoint),hl
+	ld	a,b
+	ld	(KeyLength),a
+	ret
+
+GetHL	dec	b
+	ld	a,b
+	or	a
+	ld	a,(hl)
+	inc	hl
+	ret
+
+CommandPoint	dw	0,0,0,0,0,0,0,0,0	; 8 command pointer + 1 spare
+KeyPoint	dw	0
+KeyLength	db	0
+DriverSource	dw	0
+DriverLength	dw	0
+
+P_121x_2x	dw	A_121x_2x,L_121x_2x
+	db	"PHIL2",255
+P_121x_3x	dw	A_121x_3x,L_121x_3x
+	db	"PHIL3",255
+P_1250_2x	dw	A_1250_2x,L_1250_2x
+	db	"NMS2",255
+P_1250_3x	dw	A_1250_3x,L_1250_3x
+	db	"NMS3",255
+P_sony	dw	A_sony	 ,L_sony
+	db	"SONY",255
+P_16550	dw	A_16550  ,L_16550
+	db	"16550",255
+P_fake	dw	A_fake	 ,L_fake
+	db	"FAKE",255
+
+CheckDrvCom	push	hl
+	ld	de,4
+	add	hl,de
+	call	CheckCommand
+	pop	hl
+	ret	nz
+	ld	de,DriverSource
+	ld	bc,4
+	ldir
+	ret
+
+CheckCommand
+	ex	de,hl
+	ld	b,8
+	ld	hl,CommandPoint
+CheckCommand_L
+	ld	a,(hl)
+	inc	hl
+	or	(hl)
+	dec	hl
+	jr	z,CheckCommand_F
+	call	CheckCurPnt
+	ret	z
+	inc	hl
+	inc	hl
+	djnz	CheckCommand_L
+	ret
+
+CheckCommand_F	or	255
+	ret
+
+CheckCurPnt
+	push	hl
+	push	bc
+	push	de
+
+	ld	e,(hl)
+	inc	hl
+	ld	d,(hl)
+
+	pop	hl
+	push	hl
+
+	; HL -> wijst naar COMPSTRING
+	; DE -> wijst naar begin van huidige commandline woord
+
+CheckCurPnt_1	ld	a,(de)
+	inc	de
+	call	ToUpper
+	cp	(hl)
+	inc	hl
+	jr	z,CheckCurPnt_1
+
+	cp	" "
+	jr	z,CheckCurPnt_2
+	or	a
+	jr	nz,CheckCurPnt_E
+CheckCurPnt_2	dec	hl
+	ld	a,(hl)
+	xor	255
+CheckCurPnt_E
+	pop	de
+	pop	bc
+	pop	hl
+	ret
+
+ToUpper	cp	"a"
+	ret	c
+	cp	"z"+1
+	ret	nc
+	add	a,"A"-"a"
+	ret
+
+P_HELP	db	'HELP',255
+T_Help	db	13,10
+	db	'Usage   : DRIVER <options>',13,10
+	db	13,10
+	db	'With no options specified, the driver will be auto-'
+	db	'detected and installed.',13,10
+	db	'Loading a driver results in going to the BASIC en'
+	db	'vironment.',13,10,10
+	db	'Options : PHIL2,PHIL3,NMS2,NMS3,SONY,FAKE',13,10
+	db	'          these options will overide interface'
+	db	' auto-detection',13,10
+	db	'        : "+text  specify an auto execute keyboard'
+	db	' string',13,10,10
+	db	'Example : DRIVER PHIL3 "_system@',13,10,'$'
+
+HELP
+	ld	de,T_Help
+	ld	c,9
+	call	5
+	ld	c,0
+	jp	5
+
+DetectDriver
+	in	a,(#28)
+	cp	#ff
+	jr	nz,DD_121x_2x
+	in	a,(#38)
+	cp	#ff
+	jr	nz,DD_121x_3x
+	in	a,(#20)
+	cp	#ff
+	jr	nz,DD_1250_2x
+	in	a,(#30)
+	cp	#ff
+	jr	nz,DD_1250_3x
+	in	a,(#81)
+	cp	#ff
+	jr	nz,DD_sony
+DD_fake	ld	hl,P_fake
+	jr	DD_DoIt
+DD_121x_2x	ld	hl,P_121x_2x
+	jr	DD_DoIt
+DD_121x_3x	ld	hl,P_121x_3x
+	jr	DD_DoIt
+DD_1250_2x	ld	hl,P_1250_2x
+	jr	DD_DoIt
+DD_1250_3x	ld	hl,P_1250_3x
+	jr	DD_DoIt
+DD_16550	ld	hl,P_16550
+	jr	DD_DoIt
+DD_sony
+	; Detect a 16550 instead of a 8251
+	ld	a,%11001010	; test pattern
+	out	(#87),a 	; write to scratch register
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	in	a,(#87)
+	cp	%11001010     ; check for scratch register
+	jp	z,DD_16550
+	ld	hl,P_sony
+DD_DoIt	ld	de,DriverSource
+	ld	bc,4
+	ldir
+	ret
+
+begin	PRINT	t_intro
+
+	call	SplitCommand
+
+	ld	hl,P_121x_2x
+	call	CheckDrvCom
+	ld	hl,P_121x_3x
+	call	CheckDrvCom
+	ld	hl,P_1250_2x
+	call	CheckDrvCom
+	ld	hl,P_1250_3x
+	call	CheckDrvCom
+	ld	hl,P_sony
+	call	CheckDrvCom
+	ld	hl,P_16550
+	call	CheckDrvCom
+	ld	hl,P_fake
+	call	CheckDrvCom
+
+	ld	hl,P_HELP
+	call	CheckCommand
+	jp	z,HELP
+
+	ld	hl,(DriverSource)
+	ld	a,h
+	or	l
+	call	z,DetectDriver
+
+	ld	hl,(DriverSource)
+	ld	de,#9000
+	ld	bc,(DriverLength)
+	ldir
+
+	ld	hl,a_install
+	ld	de,p_install
+	ld	bc,l_install
+	ldir
+
+	ld	a,(KeyLength)
+	ld	(commandline+0),a
+	ld	hl,(KeyPoint)
+	ld	de,commandline+1
+	ld	bc,40
+	ldir
+	ld	hl,0
+	ld	(#0080),hl
+	ld	hl,e_parameters
+	ld	de,e_buffer
+	ld	c,#6c
+	call	5
+	ld	hl,e_shell
+	ld	de,e_buffer
+	ld	bc,#ff6b
+	call	5
+	ld	hl,e_program
+	ld	c,#6c
+	call	5
+
+	ld	hl,install
+	ld	a,#c3
+	ld	(#fedb),hl
+	ld	(#feda),a
+
+	ld	ix,#4022
+	ld	iy,(#f347)
+	jp	#001c
+
+e_shell	db	"SHELL",0
+e_program	db	"PROGRAM",0
+e_parameters	db	"PARAMETERS",0
+e_buffer	ds	256,0
+
+a_install
+p_install	org	#8100
+
+install	ld	a,#c9
+	ld	(#feda),a
+
+	ld	sp,#c200
+
+	xor	a
+	ld	(#fc9b),a
+	ld	(#fca9),a
+
+	ld	hl,(#f3fc)
+	ld	de,#5352		; "RS" mark
+	or	a
+	sbc	hl,de
+	ld	hl,install3_1
+	jp	z,install2
+
+	ld	hl,(#f349)
+	ld	a,h
+	cp	#c8
+	jp	c,install1
+
+	ld	de,(#9000+#50)		; GET LENGTH
+	or	a
+	sbc	hl,de			; calculate driver adress
+	ld	(#8ffc),hl		; DRIVER
+
+	ld	hl,(#9000+#52)		; START ADRES OF UNRELOCATED
+	ld	de,#9000		; DRIVER
+	add	hl,de
+	ld	de,(#8ffc)
+	ld	bc,(#9000+#50)
+	ldir
+
+	ld	de,(#8ffc)		; START ADRES OF PROGRAM
+	ld	hl,#9000+#60		; RELOCATION TABLE
+	call	adapt
+
+	ld	hl,(#8ffc)
+	ld	(#f349),hl
+
+	ld	hl,install2_1
+	jp	install2
+
+install1	ld	hl,install1_1
+install2	ld	a,#c3
+	ld	(#feda),a
+	ld	(#fedb),hl
+
+	ld	ix,#4022
+	ld	iy,(#f347)
+	jp	#001c
+
+install1_1	push	af
+	push	hl
+	push	de
+	push	bc
+	ld	hl,#9001
+	call	putstring
+	ld	a,#c9
+	ld	(#feda),a
+	ld	de,tinst_f_mem
+install12_1	ld	c,9
+	call	#f37d
+	call	keyfake
+	pop	bc
+	pop	de
+	pop	hl
+	pop	af
+	ret
+
+install3_1	push	af
+	push	hl
+	push	de
+	push	bc
+	ld	hl,#9001
+	call	putstring
+	ld	a,#c9
+	ld	(#feda),a
+	ld	de,tinst_f_double
+	jp	install12_1
+
+install2_1	push	af
+	push	hl
+	push	de
+	push	bc
+	ld	hl,#9001
+	call	putstring
+	ld	a,#c9
+	ld	(#feda),a
+	call	sethook
+	ld	de,tinst_yes
+	jp	install12_1
+
+sethook	di
+	ld	de,(#8ffc)
+	ld	a,#c3
+
+	ld	hl,(#9000+#54)		; buig FD9A af naar de RS232
+	add	hl,de
+	ld	(#fd9a),a		; ontvangst routines
+	ld	(#fd9b),hl		; (oude FD9A wordt gewist!)
+
+	ld	hl,(#9000+#5a)		; buig CHPUT af, zodat het
+	add	hl,de
+	ld	(#fda4),a		; mogenlijk is om REDIRECT
+	ld	(#fda5),hl		; opties te kunnen toepassen
+
+	ld	hl,(#9000+#58)		; buig AUXIN af, zodat via
+	add	hl,de
+	ld	(#f371),a		; "AUX:" ook karakters kunnen
+	ld	(#f372),hl		; worden ontvangen
+
+	ld	hl,(#9000+#56)		; buig AUXOUT af, zodat via
+	add	hl,de
+	ld	(#f374),a		; "AUX:" ook karaters kunnen
+	ld	(#f375),hl		; worden verzonden
+
+	push	de
+	ld	hl,(#9000+#5e)
+	add	hl,de
+	ex	de,hl
+	ld	hl,#fd9f		; bewaar de oude hook van
+	ld	bc,5			; &hFD9F
+	ldir
+	pop	de
+
+	ld	hl,(#9000+#5c)		; buig FD9F af naar onze
+	add	hl,de
+	ld	(#fd9f),a		; RS232 naar KEYBOARD buffer
+	ld	(#fda0),hl		; routine
+
+	ld	a,"R"
+	ld	(#f3fc),a		; zet "R" op #F3FC
+	ld	a,"S"
+	ld	(#f3fd),a		; zet "S" op #F3FD (RS-mark)
+	ld	(#f3fe),de		; zet adres naar jump tabel
+
+	; op #f3fc moet dus "RS" staan, ter indicatie dat de driver
+	; geinstalleerd is.
+	; als "RS" aanwezig is, dan staat op #f3fe het adres naar de
+	; jump tabel.
+
+	inc	de
+	inc	de
+	inc	de
+	inc	de
+	inc	de
+	inc	de
+	ld	(deinit_ad),de
+deinit_ad	equ	$+1
+	call	0
+	ei
+	ret
+
+keyfake	ld	a,(commandline)
+	cp	2
+	ret	c
+	dec	a
+	cp	40
+	jr	c,keyfake1
+	ld	a,39
+keyfake1	ld	b,a
+	ld	de,commandline+1
+	ld	hl,#fbf0
+	ld	(#f3fa),hl
+keyfake3	ld	a,(de)
+	inc	de
+	cp	"@"
+	jr	nz,keyfake2
+	ld	a,13
+keyfake2	ld	(hl),a
+	inc	hl
+	djnz	keyfake3
+	ld	(#f3f8),hl
+	ret
+
+cmpstrn	ld	a,(de)		; in  : HL string 1
+	cp	(hl)		;	DE string 2
+	ret	nz		;	B  aantal te vergelijken chars
+	inc	hl
+	inc	de		; uit : NZ = ongelijk
+	djnz	cmpstrn		;	 Z = gelijk !
+	ret
+
+adapt	ld	c,(hl)
+	inc	hl
+	ld	b,(hl)
+	inc	hl
+	ld	a,b
+	or	c
+	ret	z
+	push	hl
+	ld_hl_de
+	add	hl,bc
+	ld	b,(hl)
+	dec	hl
+	ld	c,(hl)
+	push	de
+	ex	de,hl
+	add	hl,bc
+	ex	de,hl
+	ld	(hl),e
+	inc	hl
+	ld	(hl),d
+	pop	de
+	pop	hl
+	jp	adapt
+
+putstring	call	crlf
+putstring1	ld	a,(hl)
+	cp	26
+	jr	z,putstring2
+	push	hl
+	call	#00a2
+	pop	hl
+	inc	hl
+	jp	putstring1
+putstring2	jp	crlf
+
+crlf	ld	a,13
+	call	#00a2
+	ld	a,10
+	jp	#00a2
+
+commandline	ds	42,0
+
+tinst_f_mem	db	"Not enough memory for driver.......",13,10,"$"
+tinst_f_double	db	"Driver already installed !",13,10,"$"
+tinst_yes	db	"Driver installed.......",13,10,"$"
+
+l_install	equ	$-p_install
+
+

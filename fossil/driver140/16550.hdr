@@ -1,0 +1,38 @@
+
+;
+; Header for RS232C driver
+;
+; (p) 1994 Erik Maas
+;
+; Fill in the info of the driver below, but beware!!! Do NOT change the
+; length of the lines, so this info can be used by installation programs
+; and/or loaders.
+; the symbol LENGTH has to contain the length of the driver
+; the symbol START has to point to the start of the driver below
+
+	org	0
+
+	DB	7
+	DB	"Fossil driver v"
+	db	"0"+(version/256)
+	db	"."
+	db	"0"+(version/16).mod.16
+	db	"0"+version.mod.16
+	db	"     ",13,10                           ; DRIVER
+	DB	"(P) 1997 Erik Maas      ",13,10        ; CODER
+	DB	"16650 UART+FIFO, port ","0"+baseport/16
+	db	"x",13,10,26                            ; INTERFACE
+
+	DW	LENGTH
+	DW	START
+
+	DW	H_FD9A
+	DW	H_AUX_OUT
+	DW	H_AUX_IN
+	DW	H_CHPUT
+	DW	H_TIMI
+	DW	O_TIMI
+
+; 3*32 BYTES SPACE
+
+

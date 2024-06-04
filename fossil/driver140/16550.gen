@@ -1,0 +1,631 @@
+START	EQU	$
+
+	ORG		0
+
+version	equ	00140h
+
+*include 16550.VAR
+
+p_rs_driver:
+; *********** Main driver, entry table.....
+
+	jp	getversion	; Version H.L (H.L packed BCD)
+	jp	init		; Initialise RS232C functions
+	jp	deinit		; De-Initialise RS232 functions
+				; (Shut down the UART functions)
+
+	jp	setbaud 	; H=Tx baud rate, L=Rx baud rate
+				; 0 = 75	1 = 300
+				; 2 = 600	3 = 1200
+				; 4 = 2400	5 = 4800
+				; 6 = 9600	7 = 19200
+				; 8 = 38400 !	9 = 57600 !
+				; A = 76800 !	B = 115200 !
+				; C = 230400 !
+				; (! = alleen maar de NMS121x serie.
+				; toekomstig zijn snelheden tot en
+				; met 230400 baud!, voor de NMS121x
+				; serie dus)
+
+	jp	protocol	; H 0-1 data bits
+				;	00 5 bits or less
+				;	01 6 bits
+				;	10 7 bits
+				;	11 8 bits
+				;   2-3 stop bits
+				;	00 (SYNC modes enable)
+				;	01 1 stopbit
+				;	10 1.5 stopbits
+				;	11 2 stopbits
+				;   4-5 parity
+				;	x0 none
+				;	01 even
+				;	11 odd
+				;   6-7 0
+				; L = 0
+				;	This register is saved for
+				;	future use, so it should be
+				;	filled with 0
+
+	jp	channel 	; H	channel number (only possible
+				;	for multichannel interfaces)
+
+	jp	rs_in		; Receive [A] from receive buffer
+	jp	rs_out		; Send [A]
+
+	jp	rs_in_stat	; A=0 No data, A!=0 Data in buffer
+	jp	rs_out_stat	; A =0 Data can be send
+				; A!=0 Not ready for sending
+
+	jp	dtr		; H=0 drop DTR, H=255 raise DTR
+	jp	rts		; H=0 drop RTS, H=255 raise RTS
+	jp	carrier		; A=0 no carrier, A!= carrier detect
+
+	jp	chars_in_buf	; Return : HL = characters in Rx buf.
+	jp	size_of_buf	; Returnn : HL = size of buffer
+	jp	flushbuf	; Flush the receive buffer
+
+	jp	fastint 	; use &H0038 hook for speedup
+				; H=0 Connect driver fast
+				; H=1 Release fast hook
+	jp	hook38stat	; set status for 0038 hook
+				; H=0 Enable normal interrupts
+				; H=1 Disable other interrupt use
+
+	jp	chput_hook	; redirect CHPUT data to RS232
+				; H=0 no redirection
+				; H=1 redirect with echo
+				; H=3 redirect without echo (faster)
+	jp	keyb_hook	; redirect RS232 to keyboard buffer
+				; H=0 release hook, H!=0 bend hook
+
+	jp	get_info	; Return : HL = Pointer to driver
+				; info block
+
+; Driver info block :
+;
+;	Offset	Bytes	Description
+driver_info:	dw	version
+;	+0	2	Version number +1 contains main version
+;			+0 contains sub-version both packed BCD
+
+speed_status:	db	7
+;	+2	1	Current receive speed index
+
+	db	7
+;	+3	1	Current send speed index
+
+cur_proto:	db	00000111b
+;	+4	1	Current protocol
+;			bit 0-1 Data Bits
+;				00 5 bits or less
+;				01 6 bits
+;				10 7 bits
+;				11 8 bits
+;			    2-3 Stop Bits
+;				00 (SYNC modes enable)
+;				01 1 stopbit
+;				10 1.5 stopbits
+;				11 2 stopbits
+;			    4-5 Parity
+;				00 none
+;				01 even
+;				11 odd
+;			    6-7 0 (not defined yet)
+
+hook_txt:	db	0
+;	+5	1	ChPut_Hook redirection status
+
+hook_get:	db	0
+;	+6	1	Keyboard_Hook redirection status
+
+cur_rts:	db	3
+;	+7	1	Current RTS status (Request To Send, or NOT!)
+
+cur_dtr:	db	0
+;	+8	1	Current DTR status (Data Terminal Ready)
+
+cur_channl:	db	0
+;	+9	1	Current channel
+
+	db	8	; NMS121x interface (multichannel)
+;	+10	1	Hardware info
+;			0 = No description
+;			1 = ASCII monochannel compatible
+;			2 = NMS121x interface (multichannel)
+;			3!= MT-Telcom, adapted for RS232C
+;			4 = NMS1250, adapted for RS232C
+;			5!= Gradiente interface (brazilian)
+;			6!= DDX interface (brazilian)
+;			7!= Multichannel ASCII compatible
+;			8 = 16650 UART with FIFO
+;			Versions marked with "!" are not available
+;			yet, but there's a chance they will be some-
+;			where in the near/far future...
+
+protocol:	ld	a,h
+	ld	(cur_proto),a
+	and	000000111b		; filter out bits/character
+	xor	000000100b		; and stopbits
+	ld	b,a			; put it in our work register
+	ld	a,h
+	and	000110000b		; parity
+	xor	000100000b
+	srl	a
+	or	b
+	out	(baseport+3),a
+	ret
+
+channel:	ret
+
+getversion:	ld	hl,version
+	ret
+get_info:	ld	hl,driver_info
+	ret
+dtr:	ld	a,h
+	ld	(cur_dtr),a
+	and	000000001b
+;	 xor	 000000001b
+	ld	b,a
+	di
+	in	a,(baseport+4)
+	and	011111110b
+	or	b
+	out	(baseport+4),a
+	ei
+	ret
+
+rts:
+	ld	a,h
+	and	1
+	ld	h,a
+	ld	a,(cur_rts)
+	and	2
+	or	h
+	di
+	call	rts_inside
+	ei
+	ret
+
+rts_inside:
+	ld	(cur_rts),a
+	ld	h,0
+	cp	3
+	jr	nz,rts_1
+	ld	h,2
+rts_1:
+	in	a,(baseport+4)
+	and	011111101b
+	or	h
+	out	(baseport+4),a
+	ret
+
+carrier:
+	ld	a,255
+	ret
+
+chars_in_buf:	ld	hl,(inbufnumber); get number of characters in buffer
+	ret
+size_of_buf:	ld	hl,bufsize	; get size of buffer
+	ret
+
+hook38stat:	ld	a,h
+	ld	(do_0038),a	; en/dis able h_timi function
+	ret
+
+rs_out_stat:
+	in	a,(baseport+5)
+	and	020h
+	ret	z
+	or	255
+	ret
+
+rs_in_stat:	ld	hl,(inbufnumber)
+	ld	a,h
+	or	l
+	ret	z
+	or	255
+	ret
+
+set_speed:	ld	hl,(speed_status)
+	jr	setbaud2
+
+setbaud:	ld	a,h
+	cp	11+1
+	jr	c,setbaud1
+	ld	h,11
+setbaud1:	ld	l,h
+	ld	(speed_status),hl
+setbaud2:
+	ld	h,0
+	add	hl,hl
+	ld	de,speedtable
+	add	hl,de
+	di
+	in	a,(baseport+3)
+	or	128
+	out	(baseport+3),a
+	ld	a,(hl)
+	out	(baseport+0),a
+	inc	hl
+	ld	a,(hl)
+	out	(baseport+1),a
+	in	a,(baseport+3)
+	and	127
+	out	(baseport+3),a
+	ei
+	ret
+
+; Speedtable for 1,8432 MHz
+speedtable:	dw	1536		;0 75
+	dw	384		;1 300
+	dw	192		;2 600
+	dw	96		;3 1200
+	dw	48		;4 2400 (with a little error)
+	dw	24		;5 4800 (idem)
+	dw	12		;6 9600 "
+	dw	6		;7 19200
+	dw	3		;8 38400
+	dw	2		;9 57600
+	dw	2		;A 76800 (niet)
+	dw	1		;B 115200
+
+; Speedtable for 18,432 MHz
+;speedtable:	 dw	 15360		 ;0 75
+;	 dw	 3840		 ;1 300
+;	 dw	 1920		 ;2 600
+;	 dw	 960		 ;3 1200
+;	 dw	 480		 ;4 2400 (with a little error)
+;	 dw	 240		 ;5 4800 (idem)
+;	 dw	 120		 ;6 9600 "
+;	 dw	 60		 ;7 19200
+;	 dw	 30		 ;8 38400
+;	 dw	 20		 ;9 57600
+;	 dw	 20		 ;A 76800 (niet)
+;	 dw	 10		 ;B 115200
+
+
+baud:	dw	0
+
+hook_txtecho:	db	0
+do_0038:	db	0		; normal int. enabled
+
+flushbuf:	di
+	ld	hl,inbuf
+	ld	(inbufget),hl
+	ld	(inbufput),hl
+	ld	hl,0
+	ld	(inbufnumber),hl
+	ei
+	ret
+
+fastint:	ld	a,h
+	or	a
+	jr	nz,fastint2
+	call	checkhook
+	ret	z
+	ld	hl,0038h
+	ld	de,old_0038
+	ld	bc,3
+	ldir
+	ld	a,0c3h
+	ld	hl,hook0038
+	di
+	ld	(0038h+0),a
+	ld	(0038h+1),hl
+	ei
+	ret
+fastint2:	call	checkhook
+	ret	nz
+	di
+	ld	hl,old_0038
+	ld	de,0038h
+	ld	bc,3
+	ldir
+	ei
+	ret
+
+checkhook:	ld	hl,(0038h+1)
+	ld	de,hook0038
+	or	a
+	sbc	hl,de
+	ret
+
+hook0038:	push	af
+
+	in	a,(baseport+5)
+	and	1
+	jr	z,quit0038
+
+	push	hl
+	push	de
+	push	bc
+hook0038_1:	call	intrsin
+	in	a,(baseport+5)
+	and	1
+	jr	nz,hook0038_1
+
+no_more:	pop	bc
+	pop	de
+	pop	hl
+
+stop_0038:	pop	af
+	ei
+	reti
+
+quit0038:	ld	a,(do_0038)
+	or	a
+	jr	nz,sub_0038
+	pop	af
+old_0038:	ds	3,0c9h
+
+sub_0038:	in	a,(099h)
+	and	080h
+	jr	z,stop_0038
+	push	bc
+	ld	bc,(0fc9eh)
+	inc	bc
+	ld	(0fc9eh),bc
+	pop	bc
+	jr	stop_0038
+
+H_FD9A:	push	af
+
+	in	a,(baseport+5)
+	and	1
+	jr	z,norsint
+
+	push	hl
+	push	de
+	push	bc
+rs_in1:	call	intrsin
+	in	a,(baseport+5)
+	and	1
+	jr	nz,rs_in1
+
+onersint:	pop	bc
+	pop	de
+	pop	hl
+norsint:	pop	af
+	ret
+
+intrsin:	db	011h		; ld de,(inbufput)
+inbufput:	dw	inbuf
+	db	021h		; ld hl,(inbufnumber)
+inbufnumber:	dw	0
+
+	in	a,(baseport+0)
+	ld	(de),a
+	inc	de
+	inc	hl
+	ld	(inbufnumber),hl
+; -----
+	ld	a,h
+	or	a
+	jr	z,intrsin2
+	ld	a,l
+	cp	080h
+	jr	nz,intrsin2	;c,intrsin2
+	push	de
+	ld	a,(cur_rts)
+	and	001b
+	call	rts_inside
+;	 ld	 a,0f8h
+;	 out	 (099h),a
+;	 ld	 a,087h
+;	 out	 (099h),a
+	pop	de
+; -----
+intrsin2:
+	ld	hl,inbufend
+	ld	a,l
+	xor	e
+	jr	nz,intrsin1
+	ld	a,h
+	xor	d
+	jr	nz,intrsin1
+	ld	de,inbuf
+intrsin1:	ld	(inbufput),de
+	ret
+
+
+H_AUX_IN:	call	rs_in		; wacht met auxin op een karakter !
+	jr	z,H_AUX_IN
+	ret
+
+chput_hook:	ld	a,h
+	push	af
+	ld	(hook_txt),a
+	pop	af
+	and	2
+	ld	(hook_txtecho),a
+	ret
+keyb_hook:	ld	a,h
+	ld	(hook_get),a
+	ret
+
+
+wacht:	xor	a
+	ld	(0fc9eh),a
+	ei
+wacht1:	ld	a,(0fc9eh)
+	or	a
+	jr	z,wacht1
+	ret
+
+init:	di
+	ld	h,00000111b
+	ld	l,0
+	call	protocol
+	ld	h,255
+	call	dtr
+	ld	h,255
+	call	rts
+	call	set_speed	; set the 8253 at the right speed
+	ld	a,7
+	out	(baseport+2),a	; enable FIFO
+	out	(baseport+2),a
+	ld	a,1
+	out	(baseport+1),a	; enable interrupts
+	ei
+	jp	flushbuf	; flush the receive buffer
+
+deinit:
+	di
+	ld	h,00000111b
+	ld	l,0
+	call	protocol
+	ld	h,0
+	call	dtr
+	ld	h,0
+	call	rts
+	ld	a,0
+	out	(baseport+1),a	; disable interrupts
+	ei
+	ret
+
+;delay:	 ex	 (sp),hl
+;	 ex	 (sp),hl
+;	 ex	 (sp),hl
+;	 ex	 (sp),hl
+;	 ex	 (sp),hl
+;	 ex	 (sp),hl
+;	 ex	 (sp),hl
+;	 ex	 (sp),hl
+;	 ret
+
+H_TIMI:	push	af
+	ld	a,(hook_get)
+	or	a		; moeten we deze hook uitvoeren
+	jp	z,hook_rs_ret	; nee, dan overslaan
+
+	push	hl		; ja, dan even wat registers veilig
+	push	de		; zetten
+	push	bc
+
+	ld	hl,(inbufnumber)
+	ld	a,h
+	or	l		; staat er iets in de buffer?
+	jp	z,end_get_rs	; niets?, dan gaan we weer weg
+
+	dec	hl
+	ld	(inbufnumber),hl
+	ld	de,(inbufget)
+	ld	a,(de)		; haal anders even een karakter op
+	inc	de		; hoog de haal pointer op..
+	ld	hl,inbufend
+	or	a		; aan het eind van de rondgaande
+	sbc	hl,de		; buffer ?
+	call	z,init_get_buf	; ja, dan even de pointer init.
+	ld	(inbufget),de	; bewaar deze pointer
+
+	ld	hl,(0f3f8h)	; even de pointer ophalen van de keyb.
+	ld	(hl),a		; buffer en plaatsen
+	inc	hl		; pointer ophogen
+	ld	(0f3f8h),hl	; en wegzetten
+	ld	de,0fc18h
+	or	a		; even checken of we aan het einde
+	sbc	hl,de		; zitten van de buffer
+	jr	nz,end_get_rs	; nee, dan mogen we weer weg
+
+	ld	hl,0fbf0h	; anders even deze pointer weer op
+	ld	(0f3f8h),hl	; het begin van de buffer zetten
+
+end_get_rs:	pop	bc
+	pop	de
+	pop	hl
+hook_rs_ret:	pop	af
+O_TIMI:	ds	5,0c9h
+
+init_get_buf:	ld	de,inbuf
+	ret
+
+H_CHPUT:	ld	b,a
+	ld	a,(hook_txt)
+	or	a
+	ret	z
+	ld	a,b
+	call	rs_out
+	ld	a,(hook_txtecho)
+	or	a
+	ret	z
+	pop	hl		; haal returnadres weg
+	pop	af
+	pop	bc
+	pop	de
+	pop	hl
+	ret			; keer terug zonder echo
+
+H_AUX_OUT	EQU	$
+
+rs_out:
+	ei
+	ld	b,a
+rs_out1:
+	in	a,(baseport+5)
+	and	020h
+	jr	z,rs_out1
+	ld	a,b
+	out	(baseport+0),a
+	ret
+
+rs_in:	di
+	ld	hl,(inbufnumber)
+	ld	a,h
+	or	l			; is er wel data ?
+	jr	z,eiret 		; terug met Z flag indien niet
+
+	dec	hl
+	ld	(inbufnumber),hl	; verander karakters in buffer
+	ei
+; -----
+	ld	a,h
+	or	a
+	jr	nz,rs_in_1
+	ld	a,l
+	cp	080h
+	jr	nz,rs_in_1	;nc,rs_in_1
+	di
+	ld	a,(cur_rts)
+	or	010b
+	call	rts_inside
+;	 ld	 a,0f5h
+;	 out	 (099h),a
+;	 ld	 a,087h
+;	 out	 (099h),a
+	ei
+; -----
+rs_in_1:
+	ld	de,(inbufget)
+	ld	a,(de)
+	inc	de
+	ld	hl,inbufend
+	ld	c,a
+	ld	a,l
+	xor	e
+	jr	nz,retchr
+	ld	a,h
+	xor	d
+	jr	nz,retchr
+	ld	de,inbuf
+	or	255
+retchr:	ld	(inbufget),de
+	ld	a,c
+	ret
+eiret:	ei
+	ret
+
+inbuf:	ds	bufsize,0	; ontvangst buffer van bufsize
+inbufend:	db	0
+
+inbufget:	dw	inbuf		; pointers voor de buffers
+
+	; inbufput
+	; inbufnumber	resides both in INTRSIN
+
+
+LENGTH	equ	$-p_rs_driver
+
+	END
+
+

@@ -1,0 +1,8 @@
+
+; NMS 121x variable file
+; This file will be included by NMS.GEN
+
+bufsize	equ	512	; receive buffer size
+baseport	equ	080h
+
+
