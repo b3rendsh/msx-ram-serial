@@ -22,7 +22,7 @@ C:\ERIX folder with these programs.
 FCHANNEL.COM
 ------------
 With this tool you can set the channel on the 16552.
-The channel can provided as a commandline parameter.
+The channel can be provided as a commandline parameter.
 
 
 FDINFO.COM
