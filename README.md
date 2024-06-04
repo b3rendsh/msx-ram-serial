@@ -57,13 +57,13 @@ I've tested the cart with the fossil driver and Erix terminal on a MSX2 machine 
 
 ### Work in progress / wishlist
 
- - [ ] Custom 16552 fossil driver to choose channel A or B and select I/O ports
- - [ ] RS232C BASIC Extension BIOS (loaded in RAM)
- - [ ] Xmodem file exchange program for MSX1
- - [ ] VT100 serial console for MSX1 and MSX2 (server not client)
- - [ ] 80 columns support with the serial console for MSX1
- - [ ] UNAPI TCP/IP with ESP01 Wifi (use/adapt one of the existing solutions)
- - [ ] Use serial console with CP/M Plus
+ - ✔️ Custom 16552 fossil driver to choose channel A or B and select I/O ports
+ - ⬜ RS232C BASIC Extension BIOS (loaded in RAM)
+ - ⬜ Xmodem file exchange program for MSX1
+ - ⬜ VT100 serial console for MSX1 and MSX2 (server not client)
+ - ⬜ 80 columns support with the serial console for MSX1
+ - ⬜ UNAPI TCP/IP with ESP01 Wifi (use/adapt one of the existing solutions)
+ - ⬜ Use serial console with CP/M Plus
 
 ## Disclaimer
 Build and use at your own risk! There is no warranty of any kind, either expressed or implied, that this cart will work with your MSX machine and/or software. 
