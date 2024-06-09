@@ -11,14 +11,16 @@ HIMSAV  	equ	$f349		; MSXDOS highmem
 H_AUXINP	equ	$f371		; AUXINP hook
 H_AUXOUT	equ	$f374		; AUXOUT hook
 PUTPNT		equ	$f3f8		; Keyboard buffer write pointer
+KEYBUF		equ	$fbf0		; Key code buffer
+BUFEND		equ	$fc18		; End of keyboard buffer
 RTYCNT		equ	$fc9a		; Interrupt control
 INTFLG		equ	$fc9b		; Interrupt flag (ctrl-stop)
 JIFFY		equ	$fc9e		; Vsync counter used in TIME function
 EXPTBL		equ	$fcc1		; Main BIOS slot address
-H_STKE		equ	$feda		; STKERR hook
 H_KEYI		equ	$fd9a		; KEYINT hook
 H_TIMI		equ	$fd9f		; KEYINT/TIMI hook
 H_CHPU		equ	$fda4		; CHPUT hook
+H_STKE		equ	$feda		; STKERR hook
 
 
 ; RS232C fossil driver
@@ -51,8 +53,8 @@ RS_GETINFO	equ	$3c
 
 ; UART 16550 / 16552
 
-UARTBUF		equ	512		; Buffer 
-UARTVER		equ	$0200		; BCD driver version number
+UARTBUF		equ	256		; Receive buffer (increase if receive errors)
+UARTVER		equ	$0210		; BCD driver version number
 
 UART_RBR	equ	0		; dlab=0: receiver buffer register (read)
 UART_THR	equ	0		; dlab=0: transmitter holding register (write)

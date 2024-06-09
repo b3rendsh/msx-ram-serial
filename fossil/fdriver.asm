@@ -1,5 +1,5 @@
 ; ------------------------------------------------------------------------------
-; FDRIVER.ASM - Fossil Driver 1655X v1.0
+; FDRIVER.ASM - Fossil Driver 1655X v2.1
 ; Copyright (C) 2024 H.J. Berends
 ;
 ; Parts of the code and comments are derived from sources created by Erik Maas:
@@ -12,6 +12,20 @@
 ; This module is an enhanced fossil driver for the 16550 or 16552 UART.
 ; It is based on the fossil driver specification by Erik Maas.
 ; Changes:
+; --------
+; V2.1:
+; + Fixed errors in RTS flag and receive buffer logic
+; + Added dummy driver
+; + Added driver select parameter:
+;	0 = dummy
+;	1 = 16550 port $20
+;	2 = 16550 port $80
+;	3 = 16552 port $20
+;	4 = 16552 port $80
+;	anything else: autodetect
+; + Init/deinit routines: keep current protocol setting
+;
+; V1.0 (driver v2.0)
 ; + UART 16550 or 16552 detection at I/O ports 0x80 or 0x20
 ; + Added channel selection routine
 ; + No BASIC screen
@@ -22,9 +36,6 @@
 ; x Removed drivers for other uarts
 ; ------------------------------------------------------------------------------
 
-; uncomment to disable uart detection and set fixed port and type
-;DEFINE NODETECT	
-
 		INCLUDE "fossil.inc"
 
 		ORG	$100
@@ -32,7 +43,7 @@
 		jp	loader
 
 ; ------------------------------------------------------------------------------
-; Header 
+; 1655x - Header
 ; ------------------------------------------------------------------------------
 hdr_info:	db	"Fossil driver v"		; Driver version
 		db	'0'+(UARTVER/256)
@@ -45,7 +56,7 @@ hdr_port:	db	"0"
 		db	"x",$0d,$0a,"$"
 
 ; ------------------------------------------------------------------------------
-; Driver relocation table
+; 1655x - Driver relocation table
 ; ------------------------------------------------------------------------------
 
 rel_tab:	dw	p00,p01,p02,p03,p04,p05,p06,p07			; jump table
@@ -53,8 +64,8 @@ rel_tab:	dw	p00,p01,p02,p03,p04,p05,p06,p07			; jump table
 		dw	p16,p17,p18,p19,p20
 
 		;	p00						; getversion
-		dw	p0101,p0102,p0103,p0104,p0105,p0106,p0107	; init
-		dw	p0201,p0202,p0203,p0204				; deinit
+		dw	p0101,p0102,p0103,p0104,p0105,p0106,p0107,p0108	; init
+		dw	p0201,p0202,p0203				; deinit
 		dw	p0301,p0302,p0303,p0304,p0305,p0306,p0307	; setbaud
 		dw	p0401,p0402					; protocol
 		dw	p0501,p0502,p0503,p0504				; channel
@@ -76,18 +87,18 @@ rel_tab:	dw	p00,p01,p02,p03,p04,p05,p06,p07			; jump table
 		dw	p2001						; getinfo
 					; 
 		dw	p2101,p2102,p2103,p2104,p2105,p2106,p2107	; fh_keyi
-		dw	p2108,p2109
+		dw	p2108,p2109,p2110
 									; fh_aux_out
 		dw	p2301						; fh_aux_in
 		dw	p2401,p2402,p2403				; fh_chput
 		dw	p2501,p2502,p2503,p2504,p2505,p2506,p2507	; fh_timi
-		dw	p2508,p2509,p2510					
+		dw	p2508,p2509					
 		; 	p26						; fo_timi	
 
 		dw	$ffff						; end of table
 
 ; ------------------------------------------------------------------------------
-; 1655x driver
+; 1655x - Driver code
 ; ------------------------------------------------------------------------------
 tsr_start:
 		PHASE	$0		; driver will be relocated by the loader
@@ -137,8 +148,9 @@ p05:		jp	channel 	; H = channel number: 0 or 1 (for use with dual channel uart)
 p06:		jp	rs_in		; [A] = Received byte
 p07:		jp	rs_out		; [A] = Transmit byte
 
-p08:		jp	rs_in_stat	; A=0 No data in buffer A!=0 Data in buffer
-p09:		jp	rs_out_stat	; A=0 Data can be send  A!=0 Not ready for sending
+p08:		jp	rs_in_stat	; A=0 No data in buffer     A!=0 Data in buffer
+p09:		jp	rs_out_stat	; A=0 Not ready for sending A!=0 Data can be send 
+					; (in the v1.40 source this was commented the wrong way around)
 
 p10:		jp	dtr		; H=0 drop DTR, H=255 raise DTR
 p11:		jp	rts		; H=0 drop RTS, H=255 raise RTS
@@ -194,25 +206,25 @@ p20:		jp	get_info	; Return HL = Pointer to driver info block
 driver_info:	dw	UARTVER		; +0	2	Version number +1 contains main version
 					; 		+0 contains sub-version both packed BCD
 
-speed_status:	db	7		; +2	1	Current receive speed index
+speed_status:	db	7		; +2	1	Current receive speed index (default 19200)
 
-		db	7		; +3	1	Current send speed index
+		db	7		; +3	1	Current send speed index (default 19200)
 
-cur_proto:	db	00000111b	; +4	1	Current protocol (Data/Stop/Parity 8N1)
+cur_proto:	db	00000111b	; +4	1	Current protocol (Data/Stop/Parity: default 8N1)
 
 hook_txt:	db	0		; +5	1	ChPut_Hook redirection status
 
 hook_get:	db	0		; +6	1	Keyboard_Hook redirection status
 
-cur_rts:	db	3		; +7	1	Current RTS status (Request To Send, or NOT!)
+cur_rts:	db	3		; +7	1	Current RTS status (default 3)
 
-cur_dtr:	db	0		; +8	1	Current DTR status (Data Terminal Ready)
+cur_dtr:	db	0		; +8	1	Current DTR status (default 0)
 
-cur_channl:	db	0		; +9	1	Current channel
+cur_channl:	db	0		; +9	1	Current channel (default 0)
 
-		db	8		; +10	1	8 = 16650 UART with FIFO
+		db	8		; +10	1	8 = 16650 UART with FIFO (not changed)
 
-; Extra fields driver v2.0
+; Extra fields driver v2+
 
 uport:		db	$80		; +11	1	UART base I/O port (detect at runtime)
 
@@ -229,38 +241,37 @@ getversion:	ld	hl,UARTVER
 
 ; p01 ------------------------------------------
 init:		di
-		ld	h,00000111b		
+p0101:		ld	a,(cur_proto)		; use current protocol setting
+		ld	h,a
 		ld	l,0
-p0101:		call	protocol		; set protocol to 8N1
+p0102:		call	protocol
 		ld	h,$ff
-p0102:		call	dtr
+p0103:		call	dtr
 		ld	h,$ff
-p0103:		call	rts
-p0104:		call	set_speed		; set the uart at the right speed
-p0105:		ld	a,(ubase+UART_FCR)
+p0104:		call	rts
+p0105:		call	set_speed		; set the uart at the right speed
+p0106:		ld	a,(ubase+UART_FCR)
 		ld	c,a
 		ld	a,$07
 		out	(c),a			; enable FIFO
-p0106:		ld	a,(ubase+UART_IER)
+p0107:		ld	a,(ubase+UART_IER)
 		ld	c,a
 		ld	a,$01
-		out	(c),a			; enable interrupts
-		ei
-p0107:		jp	flushbuf		; flush the receive buffer
+		out	(c),a			; enable uart interrupts
+p0108:		call	flushbuf		; flush/init the receive buffer
+		ei				; ei after flushbuf
+		ret
 
 ; p02 ------------------------------------------
 deinit:		di
-		ld	h,00000111b
-		ld	l,0
-p0201:		call	protocol		; set protocol to 8N1
 		ld	h,0
-p0202:		call	dtr
+p0201:		call	dtr
 		ld	h,0
-p0203:		call	rts
-p0204:		ld	a,(ubase+UART_IER)
+p0202:		call	rts
+p0203:		ld	a,(ubase+UART_IER)
 		ld	c,a
 		xor	a			; a=0
-		out	(c),a			; disable interrupts
+		out	(c),a			; disable uart interrupts
 		ei
 		ret
 
@@ -363,37 +374,31 @@ p0601:		ld	hl,(inbufnumber)
 		jr	z,eiret 		; z=no
 		dec	hl
 p0602:		ld	(inbufnumber),hl	
-		ei
-		ld	a,h
-		or	a
-		jr	nz,rs_in_1
-		ld	a,l
-		cp	$80
-		jr	nz,rs_in_1
-		di
+		ld	de,UARTBUF/2
+		or	a			; clear carry
+		sbc	hl,de			; bytes in buffer lower than threshold?
+		jr	nc,rs_in_1		; nc=no 
 p0603:		ld	a,(cur_rts)
-		or	010b
+		or	010b			; rts on
 p0604:		call	rts_inside
-		ei
 
-rs_in_1:
+rs_in_1:	
 p0605:		ld	de,(inbufget)
 		ld	a,(de)
 		inc	de
-p0606:		ld	hl,inbufend
+p0606:		ld	hl,inbufend		; compare (inbufget+1) to inbufend
 		ld	c,a
 		ld	a,l
-		xor	e
-		jr	nz,retchr
+		xor	e			; e = l ?
+		jr	nz,retchr		; nz=no
 		ld	a,h
-		xor	d
-		jr	nz,retchr
+		xor	d			; d = h ?
+		jr	nz,retchr		; nz=no
 p0607:		ld	de,inbuf
-		or	$ff
+		or	$ff			; reset Z flag
 retchr:
 p0608:		ld	(inbufget),de
 		ld	a,c
-		ret
 eiret:		ei
 		ret
 
@@ -449,10 +454,10 @@ p1002:		ld	a,(ubase+UART_MCR)
 rts:		ld	a,h
 		and	1
 		ld	h,a
+		di
 p1101:		ld	a,(cur_rts)
 		and	2
 		or	h
-		di
 p1102:		call	rts_inside
 		ei
 		ret
@@ -607,8 +612,9 @@ p2101:		ld	a,(ubase+UART_LSR)
 		jr	z,no_rs_int
 		push	hl
 		push	de
-rs_in1:		call	int_rs_in
-p2102:		ld	a,(ubase+UART_LSR)
+rs_in1:		
+p2102:		call	int_rs_in
+p2103:		ld	a,(ubase+UART_LSR)
 		ld	c,a
 		in	a,(c)
 		and	1
@@ -619,39 +625,36 @@ no_rs_int:	pop	bc
 		pop	af
 		ret
 
-int_rs_in:	db	$11		; ld de,(inbufput)
-inbufput:	dw	0		; inbuf
-		db	$21		; ld hl,(inbufnumber)
-inbufnumber:	dw	0		; 
-p2103:		ld	a,(ubase+UART_RBR)
+int_rs_in:	db	$11			; ld de,(inbufput)
+inbufput:	dw	0			; initialized to inbuf in flushbuf
+		db	$21			; ld hl,(inbufnumber)
+inbufnumber:	dw	0
+p2104:		ld	a,(ubase+UART_RBR)
 		ld	c,a
 		in	a,(c)
 		ld	(de),a
 		inc	de
 		inc	hl
-p2104:		ld	(inbufnumber),hl
-		ld	a,h
-		or	a
-		jr	z,int_rs_in2
-		ld	a,l
-		cp	$80
-		jr	nz,int_rs_in2	;c,int_rs_in2
+p2105:		ld	(inbufnumber),hl
 		push	de
-p2105:		ld	a,(cur_rts)
-		and	001b
-p2106:		call	rts_inside
-		pop	de
-int_rs_in2:
-p2107:		ld	hl,inbufend
+		ld	de,UARTBUF*2/3
+		or	a			; clear carry
+		sbc	hl,de			; bytes in buffer higher than threshold?
+		jr	c,int_rs_in2		; c=no
+p2106:		ld	a,(cur_rts)		
+		and	001b			; rts off
+p2107:		call	rts_inside
+int_rs_in2:	pop	de
+p2108:		ld	hl,inbufend
 		ld	a,l
 		xor	e
 		jr	nz,int_rs_in1
 		ld	a,h
 		xor	d
 		jr	nz,int_rs_in1
-p2108:		ld	de,inbuf
+p2109:		ld	de,inbuf
 int_rs_in1:
-p2109:		ld	(inbufput),de
+p2110:		ld	(inbufput),de
 		ret
 
 fh_aux_out:	EQU	rs_out			
@@ -700,18 +703,20 @@ p2506:		ld	de,(inbufget)
 p2507:		ld	hl,inbufend
 		or	a			; at end of buffer?
 		sbc	hl,de			; 
-p2508:		call	z,init_get_buf		; z=yes
+		jr	nz,timi_1		; nz=no
+p2508:		ld	de,inbuf
+timi_1:
 p2509:		ld	(inbufget),de		; save buffer pointer
 	
 		ld	hl,(PUTPNT)		; get keyboard write pointer
 		ld	(hl),a			; put character
 		inc	hl			; pointer +1
 		ld	(PUTPNT),hl		; save pointer
-		ld	de,0fc18h
+		ld	de,BUFEND
 		or	a			; at end of buffer?
 		sbc	hl,de			; 
 		jr	nz,end_get_rs		; nz=no
-		ld	hl,$fbf0		; init pointer to start
+		ld	hl,KEYBUF		; init pointer to start
 		ld	(PUTPNT),hl		; 
 end_get_rs:	pop	bc
 		pop	de
@@ -719,9 +724,6 @@ end_get_rs:	pop	bc
 hook_rs_ret:	pop	af
 fo_timi:	ds	5,$c9
 
-init_get_buf:	
-p2510:		ld	de,inbuf
-		ret
 
 ; ----------------------------------------------
 ; Variables
@@ -731,13 +733,192 @@ hook_txtecho:	db	0
 do_0038:	db	0	
 inbuf:		ds	UARTBUF,0		; receive buffer
 inbufend:	db	0
-inbufget:	dw	0			; pointers for buffers
+inbufget:	dw	0			; pointer for buffers (initialized to inbuf in flushbuf)
 ubase:		db	0,1,2,3,4,5,6,7		; UART register ports set at runtime
 
 		DEPHASE			
 
-tsr_length:	equ	$-tsr_start		; size of the driver code
+tsr_length:	dw	$-tsr_start		; size of the driver code
 
+		dw	tsr_start
+		dw	rel_tab
+		dw	fh_keyi
+		dw	fh_aux_out
+		dw	fh_aux_in
+		dw	fh_chput
+		dw	fh_timi
+		dw	fo_timi
+
+
+
+; ------------------------------------------------------------------------------
+; Dummy - Header
+; ------------------------------------------------------------------------------
+d_hdr_info:	db	"Fossil driver v"
+		db	'0'+(UARTVER/256)
+		db	"."
+		db	'0'+(UARTVER/16) % 16
+		db	'0'+(UARTVER % 16)
+		db	$0d,$0a
+		db	"Dummy UART, 2 channels"	
+		db	$0d,$0a,"$"
+
+; ------------------------------------------------------------------------------
+; Dummy - Driver relocation table
+; ------------------------------------------------------------------------------
+
+d_rel_tab:	dw	d00,d01,d02,d03,d04,d05,d06,d07
+		dw	d08,d09,d10,d11,d12,d13,d14,d15
+		dw	d16,d17,d18,d19,d20
+		dw	d0101,d0102
+		dw	d0201,d0202
+		dw	d0301
+		dw	d0401
+		dw	d0501,d0502
+		dw	d2001
+		dw	$ffff
+
+; ------------------------------------------------------------------------------
+; Dummy - Driver code
+; ------------------------------------------------------------------------------
+d_tsr_start:
+		PHASE	$0
+
+d_rs_driver:
+d00:		jp	d_getversion	
+d01:		jp	d_init		
+d02:		jp	d_deinit		
+d03:		jp	d_setbaud 	
+d04:		jp	d_protocol	
+d05:		jp	d_channel 
+d06:		jp	d_rs_in
+d07:		jp	d_rs_out
+d08:		jp	d_rs_in_stat
+d09:		jp	d_rs_out_stat
+d10:		jp	d_dtr
+d11:		jp	d_rts
+d12:		jp	d_carrier
+d13:		jp	d_chars_in_buf
+d14:		jp	d_size_of_buf
+d15:		jp	d_flushbuf
+d16:		jp	d_fastint
+d17:		jp	d_hook38stat
+d18:		jp	d_chput_hook	
+d19:		jp	d_keyb_hook	
+d20:		jp	d_get_info	
+
+; ------------------------------------------------------------------------------
+; Driver info block
+
+d_driver_info:	dw	UARTVER		
+d_speed_status:	db	7
+		db	7
+d_cur_proto:	db	00000111b
+d_hook_txt:	db	0
+d_hook_get:	db	0
+d_cur_rts:	db	0
+d_cur_dtr:	db	0
+d_cur_channl:	db	0
+		db	0
+d_uport:	db	$80
+d_utype:	db	$2
+
+; ------------------------------------------------------------------------------
+; Driver routines
+
+d_getversion:	ld	hl,UARTVER
+		ret
+
+d_init:		xor	a
+d0101:		ld	(d_cur_dtr),a
+d0102:		ld	(d_cur_rts),a
+		ret
+
+d_deinit:	ld	a,$ff
+d0201:		ld	(d_cur_dtr),a
+d0202:		ld	(d_cur_rts),a
+		ret
+
+d_setbaud:	ld	a,h
+		cp	$0c+$01			; max baud setting is $0c
+		jr	c,d_setbaud1
+		ld	h,$0b
+d_setbaud1:	ld	l,h			; set receive/transmit to same baudrate
+d0301:		ld	(d_speed_status),hl
+		ret
+
+d_protocol:	ld	a,h
+d0401:		ld	(d_cur_proto),a
+		ret
+
+d_channel:	
+d0501:		ld	a,(d_utype)		; check if the uart type supports dual channel
+		ld	b,a
+		ld	a,h
+		cp	b
+		ret	nc			; nc=channel number too high
+d0502:		ld	(d_cur_channl),a
+		ret
+
+d_rs_in:	xor	a			; never data received
+		ret
+
+d_rs_out:	ret				; nop
+
+d_rs_in_stat:	xor	a			; no data in buffer
+		ret
+
+d_rs_out_stat:	ld	a,$ff			; always ready to send
+		ret
+
+d_dtr:		ret
+
+d_rts:		ret
+
+d_carrier:	ld	a,$ff
+		ret
+
+d_chars_in_buf:	ld	hl,0
+		ret
+
+d_size_of_buf:	ld	hl,UARTBUF
+		ret
+
+d_flushbuf:	ret
+
+d_fastint:	ret
+
+d_hook38stat:	ret
+
+d_chput_hook:	ret
+
+d_keyb_hook:	ret
+
+d_get_info:
+d2001:		ld	hl,d_driver_info
+		ret
+
+; interrupt routines
+
+d_fh_keyi:	ret
+d_fh_aux_out:	ret
+d_fh_aux_in:	ret
+d_fh_chput:	ret
+d_fh_timi:	ret
+d_fo_timi:	ds	5,$c9
+
+		DEPHASE			
+
+d_tsr_length:	dw	$-d_tsr_start		; size of the driver code
+
+		dw	d_tsr_start
+		dw	d_rel_tab
+		dw	d_fh_keyi
+		dw	d_fh_aux_out
+		dw	d_fh_aux_in
+		dw	d_fh_chput
+		dw	d_fh_timi
+		dw	d_fo_timi
 
 ; ------------------------------------------------------------------------------
 ; Main loader routine:
@@ -759,13 +940,63 @@ loader:
 		ld	de,t_mem_error
 		jp	c,endLoader		; c=yes
 
-		; detect uart ports and type
+
+		; check for driver parameter 
+                ld      a,($005d)		; first character of commandline parameters:
+		cp	' '
+		jp	z,autodetect
+
+		cp	'0'			; 0 = dummy driver
+		jp	nz,check_1
+		ld	de,d_hdr_info		
+		ld	c,9			; print driver info
+		call	5
+		ld	hl,d_tsr_length		; dummy driver variables
+		jp	copy_driver
+
+check_1:	cp      '1'			; 1 = 16550 I/O base $20
+                jp	nz, check_2
+		ld	a,1
+		ld	(uart_type),a
+		ld	a,$20
+		ld	(uart_port),a
+		jp	set_uart
+
+check_2:	cp      '2'			; 2 = 16550 I/O base $80
+	        jp	nz, check_3
+		ld	a,1
+		ld	(uart_type),a
+		ld	a,$80
+		ld	(uart_port),a
+		jp	set_uart
+
+check_3:	cp	'3'			; 3 = 16552 I/O base $20
+		jp	nz,check_4
+		ld	a,2
+		ld	(uart_type),a
+		ld	a,$20
+		ld	(uart_port),a
+		jp	set_uart
+
+check_4:	cp	'4'			; 4 = 16552 I/O base $80
+		jp	nz,help
+		ld	a,2
+		ld	(uart_type),a
+		ld	a,$80
+		ld	(uart_port),a
+		jp	set_uart
+
+help:		; display help
+		ld	de,t_help
+		jp	endLoader
+
+autodetect:	; detect uart ports and type
 		call	detect1655x		
 		ld	a,(uart_type)
 		or	a
 		jp	z,notDetected
 
-		; set uart port and type in header and infoblock
+set_uart:	; set uart port and type in header and infoblock
 		ld	hl,tsr_start
 		ld	de,uport
 		add	hl,de
@@ -787,11 +1018,16 @@ loader:
 		dec	a
 set_hdr_type:	add	a,'0'
 		ld	(hdr_type+4),a		; Update header with uart type
-
-		; print driver info
 		ld	de,hdr_info
-		ld	c,9
+		ld	c,9			; print driver info
 		call	5
+		ld	hl,tsr_length		; 1655x driver variables
+
+copy_driver:	; copy driver variables 
+		; hl contains source location
+		ld	de,DRV_VAR
+		ld	bc,18
+		ldir
 		
 		; copy installer to $8100
 		ld	hl,installer
@@ -825,6 +1061,12 @@ endLoader:	ld	c,9			; print message
 t_error:	db	"No UART detected",$0d,$0a,"$"
 t_loaded:	db	"Driver is installed",$0d,$0a,"$"
 t_mem_error:	db	"Not enough memory for driver",$0d,$0a,"$"
+t_help:		db	"Usage: FDRIVER [option]",$0d,$0a,$0a
+		db	"With no option specified, the UART",$0d,$a
+		db	"will be autodetected and installed.",$0d,$0a,$0a
+		db	"Option: 0=dummy",$0d,$0a
+		db	"        1=16550 0x20  2=16550 0x80",$0d,$0a
+		db	"        3=16552 0x20  4=16552 0x80",$0d,$0a,"$"
 
 e_shell:	db	"SHELL",0
 e_program:	db	"PROGRAM",0
@@ -839,7 +1081,6 @@ e_buffer:	ds	256,0
 ; uart_type = 0=no uart, 1=16550 and 2=16552
 ; Todo: use detected uart ports and channel in driver code
 ; ------------------------------------------------------------------------------
-IFNDEF NODETECT
 detect1655x:	ld	a,$80
 		ld	(uart_port),a		; default ports 0x80
 		ld	hl,uart_type
@@ -897,14 +1138,6 @@ uartNotFound:	ld	a,$ff
 uart_port:	db	0
 uart_type:	db	0
 
-ELSE		
-; Fixed uart port and type for testing
-detect1655x:	ret
-
-uart_port:	db	$20			
-uart_type:	db	$02			
-ENDIF
-
 ; ------------------------------------------------------------------------------
 ; Subroutine: installler in $8100
 ; at label load_dos the main BIOS is loaded in page 0 and BASIC in page 1
@@ -915,20 +1148,20 @@ installer:
 install:	ld	sp,$c200
 
 		ld	hl,(HIMSAV)		; MSXDOS highmem
-		ld	de,tsr_length
+		ld	de,(DRV_LENGTH)
 		or	a
 		sbc	hl,de			; calculate driver address
 		ld	(HIMSAV),hl		; set new highmem
 
 		; copy driver to destination
 		ex	de,hl			; set de to tsr address
-		ld	hl,tsr_start		; start address of unrelocated driver code
-		ld	bc,tsr_length
+		ld	hl,(DRV_START)		; start address of unrelocated driver code
+		ld	bc,(DRV_LENGTH)
 		ldir
 
 		; Adapt relocated driver code
 		ld	de,(HIMSAV)		; start address of program
-		ld	hl,rel_tab		; relocation table
+		ld	hl,(DRV_RELTAB)		; relocation table
 adapt:		ld	c,(hl)
 		inc	hl
 		ld	b,(hl)			; bc = patch address
@@ -965,28 +1198,28 @@ sethook:	di
 		ld	de,(HIMSAV)
 		ld	a,$c3
 
-		ld	hl,fh_keyi		; redirect H.KEYI to fossil driver
+		ld	hl,(DRV_KEYI)		; redirect H.KEYI to fossil driver
 		add	hl,de
 		ld	(H_KEYI),a		; receiver routines
 		ld	(H_KEYI+1),hl		; (old H.KEYI will be deleted!)
 
-		ld	hl,fh_chput		; redirect CHPUT to fossil driver
+		ld	hl,(DRV_CHPUT)		; redirect CHPUT to fossil driver
 		add	hl,de
 		ld	(H_CHPU),a
 		ld	(H_CHPU+1),hl
 
-		ld	hl,fh_aux_in		; redirect AUXIN 
+		ld	hl,(DRV_AUXIN)		; redirect AUXIN 
 		add	hl,de
 		ld	(H_AUXINP),a
 		ld	(H_AUXINP+1),hl
 
-		ld	hl,fh_aux_out		; redirect AUXOUT
+		ld	hl,(DRV_AUXOUT)		; redirect AUXOUT
 		add	hl,de
 		ld	(H_AUXOUT),a
 		ld	(H_AUXOUT+1),hl
 
 		push	de
-		ld	hl,fo_timi
+		ld	hl,(DRV_OTIMI)
 		add	hl,de
 		ex	de,hl
 		ld	hl,H_TIMI		; save old hook H_TIMI
@@ -994,7 +1227,7 @@ sethook:	di
 		ldir
 		pop	de
 
-		ld	hl,fh_timi
+		ld	hl,(DRV_HTIMI)
 		add	hl,de
 		ld	(H_TIMI),a		; KEYBOARD buffer routine
 		ld	(H_TIMI+1),hl
@@ -1069,9 +1302,20 @@ cmd_system:	xor	a
 
 call_system1:	db	":_SYSTEM",$00
 call_system2:	db	":_SYSTEM(\"FOSSIL.BAT\")",$00
-my_enaslt:	db	$c9,$c9,$c9,$c9	
 
 		DEPHASE
 
 inst_length:	EQU	$-installer
+
+; Dynamic driver variables
+DRV_VAR		equ	$9000
+DRV_LENGTH	equ	$9000
+DRV_START	equ	$9002
+DRV_RELTAB	equ	$9004
+DRV_KEYI	equ	$9006
+DRV_AUXOUT	equ	$9008
+DRV_AUXIN	equ	$900A
+DRV_CHPUT	equ	$900C
+DRV_HTIMI	equ	$900E
+DRV_OTIMI	equ	$9010
 

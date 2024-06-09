@@ -7,7 +7,7 @@ More detailed information is provided in the commmented source code.
 
 FDRIVER.COM
 -----------
-Fossil driver version 2.0 for the 16550 and 16552 UART.
+Fossil driver version 2 for the 16550 and 16552 UART.
 The UART type and I/O base port (0x20 or 0x80) is automatically detected.
 The baudrate divider table is based on a 1.8432Mhz clock.
 
@@ -17,6 +17,10 @@ the boot drive which will run after the fossil driver is loaded.
 There's an example FOSSIL.BAT in the BIN folder:
 It starts the fossil driver and then the Erix terminal if there is a 
 C:\ERIX folder with these programs.
+
+Version 2.1 includes a dummy driver and preset configurations.
+The interrupt driven receive buffer routines have been revised.
+Type "FDRIVER H" for help.
 
 
 FCHANNEL.COM
