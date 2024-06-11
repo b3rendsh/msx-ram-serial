@@ -1,5 +1,5 @@
 ; ------------------------------------------------------------------------------
-; FDRIVER.ASM - Fossil Driver 1655X v2.1
+; FDRIVER.ASM - Fossil Driver 1655X v2.2
 ; Copyright (C) 2024 H.J. Berends
 ;
 ; Parts of the code and comments are derived from sources created by Erik Maas:
@@ -13,6 +13,8 @@
 ; It is based on the fossil driver specification by Erik Maas.
 ; Changes:
 ; --------
+; V2.2:
+; + Separate current speed/protocol info for channel 0 and 1
 ; V2.1:
 ; + Fixed errors in RTS flag and receive buffer logic
 ; + Added dummy driver
@@ -64,11 +66,14 @@ rel_tab:	dw	p00,p01,p02,p03,p04,p05,p06,p07			; jump table
 		dw	p16,p17,p18,p19,p20
 
 		;	p00						; getversion
-		dw	p0101,p0102,p0103,p0104,p0105,p0106,p0107,p0108	; init
+		dw	p0101,p0102,p0103,p0104,p0105,p0106,p0107	; init
+		dw	p0108,p0109	
 		dw	p0201,p0202,p0203				; deinit
 		dw	p0301,p0302,p0303,p0304,p0305,p0306,p0307	; setbaud
-		dw	p0401,p0402					; protocol
-		dw	p0501,p0502,p0503,p0504				; channel
+		dw	p0308,p0309
+		dw	p0401,p0402,p0403,p0404,p0405			; protocol
+		dw	p0501,p0502,p0503,p0504,p0505,p0506,p0507	; channel
+		dw	p0508,p0509,p0510
 		dw	p0601,p0602,p0603,p0604,p0605,p0606,p0607,p0608	; rs_in
 		dw	p0701,p0702					; rs_out
 		dw	p0801						; rs_in_stat
@@ -124,24 +129,23 @@ p03:		jp	setbaud 	; H=Tx baud rate, L=Rx baud rate
 		; The divisor table is based on a 1.8432 clock which limits max baudrate to 115200.
 
 
-p04:		jp	protocol	; H 0-1 data bits
-					;	00 5 bits or less
-					;	01 6 bits
-					;	10 7 bits
-					;	11 8 bits
-					;   2-3 stop bits
+p04:		jp	protocol	; H 7-6 00
+					;   5-4 parity
+					;	x0 none
+					;	01 even
+					;	11 odd
+					;   3-2 stop bits
 					;	00 (SYNC modes enable)
 					;	01 1 stopbit
 					;	10 1.5 stopbits
 					;	11 2 stopbits
-					;   4-5 parity
-					;	x0 none
-					;	01 even
-					;	11 odd
-					;   6-7 0
+					;   1-0 data bits
+					;	00 5 bits or less
+					;	01 6 bits
+					;	10 7 bits
+					;	11 8 bits
 					; L = 0
-					; This register is for future extensions
-					; and it should be set to 0
+					; N.B. corrected error in description wrt parity bits
 
 p05:		jp	channel 	; H = channel number: 0 or 1 (for use with dual channel uart)
 
@@ -206,11 +210,11 @@ p20:		jp	get_info	; Return HL = Pointer to driver info block
 driver_info:	dw	UARTVER		; +0	2	Version number +1 contains main version
 					; 		+0 contains sub-version both packed BCD
 
-speed_status:	db	7		; +2	1	Current receive speed index (default 19200)
+speed_status:	db	D_SPEED		; +2	1	Current receive speed index (default 19200)
 
-		db	7		; +3	1	Current send speed index (default 19200)
+		db	D_SPEED		; +3	1	Current send speed index (default 19200)
 
-cur_proto:	db	00000111b	; +4	1	Current protocol (Data/Stop/Parity: default 8N1)
+cur_proto:	db	D_PROTOCOL	; +4	1	Current protocol (Data/Stop/Parity: default 8N1)
 
 hook_txt:	db	0		; +5	1	ChPut_Hook redirection status
 
@@ -220,9 +224,9 @@ cur_rts:	db	3		; +7	1	Current RTS status (default 3)
 
 cur_dtr:	db	0		; +8	1	Current DTR status (default 0)
 
-cur_channl:	db	0		; +9	1	Current channel (default 0)
+cur_channel:	db	0		; +9	1	Current channel (default 0)
 
-		db	8		; +10	1	8 = 16650 UART with FIFO (not changed)
+uart_info:	db	8		; +10	1	8 = 16650 UART with FIFO (not changed)
 
 ; Extra fields driver v2+
 
@@ -230,6 +234,13 @@ uport:		db	$80		; +11	1	UART base I/O port (detect at runtime)
 
 utype:		db	$1		; +12	1	UART type: 1=16550 2=16552 (detect at runtime)
 
+cur_speed0:	db	D_SPEED,D_SPEED	; +13	2	Current speed channel 0
+
+cur_proto0:	db	D_PROTOCOL	; +15	1	Current protocol channel 0
+
+cur_speed1:	db	D_SPEED,D_SPEED	; +16	2	Current speed channel 1
+
+cur_proto1:	db	D_PROTOCOL	; +18	1	Current protocol channel 1
 
 ; ------------------------------------------------------------------------------
 ; Driver routines
@@ -243,22 +254,21 @@ getversion:	ld	hl,UARTVER
 init:		di
 p0101:		ld	a,(cur_proto)		; use current protocol setting
 		ld	h,a
-		ld	l,0
 p0102:		call	protocol
 		ld	h,$ff
 p0103:		call	dtr
-		ld	h,$ff
 p0104:		call	rts
-p0105:		call	set_speed		; set the uart at the right speed
-p0106:		ld	a,(ubase+UART_FCR)
+p0105:		ld	hl,(speed_status)	; use current speed setting
+p0106:		call	setbaud2
+p0107:		ld	a,(ubase+UART_FCR)
 		ld	c,a
 		ld	a,$07
 		out	(c),a			; enable FIFO
-p0107:		ld	a,(ubase+UART_IER)
+p0108:		ld	a,(ubase+UART_IER)
 		ld	c,a
 		ld	a,$01
 		out	(c),a			; enable uart interrupts
-p0108:		call	flushbuf		; flush/init the receive buffer
+p0109:		call	flushbuf		; flush/init the receive buffer
 		ei				; ei after flushbuf
 		ret
 
@@ -266,7 +276,6 @@ p0108:		call	flushbuf		; flush/init the receive buffer
 deinit:		di
 		ld	h,0
 p0201:		call	dtr
-		ld	h,0
 p0202:		call	rts
 p0203:		ld	a,(ubase+UART_IER)
 		ld	c,a
@@ -279,39 +288,43 @@ p0203:		ld	a,(ubase+UART_IER)
 setbaud:	ld	a,h
 		cp	$0c+$01			; max baud setting is $0c
 		jr	c,setbaud1
-		ld	h,$0b
+		ld	h,$0c
 setbaud1:	ld	l,h			; set receive/transmit to same baudrate
-p0301:		ld	(speed_status),hl
+p0301:		ld	(speed_status),hl	; save speed for current channel (backward compatible)
+p0302:		ld	a,(cur_channel)
+		or	a			; current channel is 0?
+		jr	nz,setspeed1		; nz=no
+p0303:		ld	(cur_speed0),hl		; save speed for channel 0
+		jr	setbaud2
+setspeed1:
+p0304:		ld	(cur_speed1),hl		; save speed for channel 1
+
 setbaud2:	ld	h,0
 		add	hl,hl
-p0302:		ld	de,speedtable
+p0305:		ld	de,speedtable
 		add	hl,de
-p0303:		ld	a,(ubase+UART_LCR)
+p0306:		ld	a,(ubase+UART_LCR)
 		ld	c,a
 		di
 		in	a,(c)
 		or	$80
 		out	(c),a			; set DLAB=1
-p0304:		ld	a,(ubase+UART_DLL)
+p0307:		ld	a,(ubase+UART_DLL)
 		ld	c,a
 		ld	a,(hl)
 		out	(c),a			; set divisor latch (LS)
 		inc	hl
-p0305:		ld	a,(ubase+UART_DLM)
+p0308:		ld	a,(ubase+UART_DLM)
 		ld	c,a
 		ld	a,(hl)
 		out	(c),a			; set divisor latch (MS)
-p0306:		ld	a,(ubase+UART_LCR)
+p0309:		ld	a,(ubase+UART_LCR)
 		ld	c,a
 		in	a,(c)
 		and	$7f
 		out	(c),a			; set DLAB=0
 		ei
 		ret
-
-set_speed:
-p0307:		ld	hl,(speed_status)
-		jr	setbaud2
 
 ; Speedtable for 1,8432 MHz
 speedtable:	dw	1536		;0 75
@@ -330,8 +343,16 @@ speedtable:	dw	1536		;0 75
 
 ; p04 ------------------------------------------
 protocol:	ld	a,h
-p0401:		ld	(cur_proto),a
-		and	000000111b		; filter out bits/character
+p0401:		ld	(cur_proto),a		; save protocol for current channel (backward compatible)
+p0402:		ld	a,(cur_channel)
+		or	a			; current channel is 0?
+		ld	a,h
+		jr	nz,protocol1		; nz=no
+p0403:		ld	(cur_proto0),a		; save protocol for channel 0
+		jr	protocol2
+protocol1:
+p0404:		ld	(cur_proto1),a		; save protocol for channel 1
+protocol2:	and	000000111b		; filter out bits/character
 		xor	000000100b		; and stopbits
 		ld	b,a			; put it in our work register
 		ld	a,h
@@ -340,7 +361,7 @@ p0401:		ld	(cur_proto),a
 		srl	a
 		or	b
 		ld	b,a
-p0402:		ld	a,(ubase+UART_LCR)
+p0405:		ld	a,(ubase+UART_LCR)
 		ld	c,a
 		out	(c),b
 		ret
@@ -352,13 +373,23 @@ p0501:		ld	a,(utype)		; check if the uart type supports dual channel
 		ld	a,h
 		cp	b
 		jr	nc,end_channel		; nc=channel number too high
-p0502:		ld	(cur_channl),a
+p0502:		ld	(cur_channel),a
 		or	a			; channel 0?
-p0503:		ld	a,(uport)
+		jr	nz,channel1		; nz=no
+p0503:		ld	a,(cur_proto0)		; restore protocol for channel 0
+p0504:		ld	hl,(cur_speed0)		; restore speed for channel 0
+		jr	channel2
+channel1:
+p0505:		ld	a,(cur_proto1)		; restore protocol for channel 1
+p0506:		ld	hl,(cur_speed1)		; restore speed for channel 1
+channel2:
+p0507:		ld	(cur_proto),a
+p0508:		ld	(speed_status),hl
+p0509:		ld	a,(uport)
 		jr	z,set_channel		; z=channel 0
 		add	a,8			; port offset for channel 1
 set_channel:	ld	b,8			; 8 registers
-p0504:		ld	hl,ubase		; address of register 0
+p0510:		ld	hl,ubase		; address of register 0
 set_reg:	ld	(hl),a
 		inc	a
 		inc	hl
@@ -772,9 +803,9 @@ d_rel_tab:	dw	d00,d01,d02,d03,d04,d05,d06,d07
 		dw	d16,d17,d18,d19,d20
 		dw	d0101,d0102
 		dw	d0201,d0202
-		dw	d0301
-		dw	d0401
-		dw	d0501,d0502
+		dw	d0301,d0302,d0303,d0304
+		dw	d0401,d0402,d0403,d0404
+		dw	d0501,d0502,d0503,d0504,d0505,d0506,d0507,d0508
 		dw	d2001
 		dw	$ffff
 
@@ -811,17 +842,21 @@ d20:		jp	d_get_info
 ; Driver info block
 
 d_driver_info:	dw	UARTVER		
-d_speed_status:	db	7
-		db	7
-d_cur_proto:	db	00000111b
+d_speed_status:	db	D_SPEED
+		db	D_SPEED
+d_cur_proto:	db	D_PROTOCOL
 d_hook_txt:	db	0
 d_hook_get:	db	0
 d_cur_rts:	db	0
 d_cur_dtr:	db	0
-d_cur_channl:	db	0
-		db	0
+d_cur_channel:	db	0
+d_uart_info:	db	0
 d_uport:	db	$80
 d_utype:	db	$2
+d_cur_speed0:	db	D_SPEED,D_SPEED
+d_cur_proto0:	db	D_PROTOCOL
+d_cur_speed1:	db	D_SPEED,D_SPEED
+d_cur_proto1:	db	D_PROTOCOL
 
 ; ------------------------------------------------------------------------------
 ; Driver routines
@@ -842,13 +877,28 @@ d0202:		ld	(d_cur_rts),a
 d_setbaud:	ld	a,h
 		cp	$0c+$01			; max baud setting is $0c
 		jr	c,d_setbaud1
-		ld	h,$0b
+		ld	h,$0c
 d_setbaud1:	ld	l,h			; set receive/transmit to same baudrate
 d0301:		ld	(d_speed_status),hl
+d0302:		ld	a,(d_cur_channel)
+		or	a			; current channel is 0?
+		jr	nz,d_setspeed1		; nz=no
+d0303:		ld	(d_cur_speed0),hl	; save speed for channel 0
+		ret
+d_setspeed1:
+d0304:		ld	(d_cur_speed1),hl	; save speed for channel 1
 		ret
 
 d_protocol:	ld	a,h
 d0401:		ld	(d_cur_proto),a
+d0402:		ld	a,(d_cur_channel)
+		or	a			; current channel is 0?
+		ld	a,h
+		jr	nz,d_protocol1		; nz=no
+d0403:		ld	(d_cur_proto0),a	; save protocol for channel 0
+		ret
+d_protocol1:
+d0404:		ld	(d_cur_proto1),a	; save protocol for channel 1
 		ret
 
 d_channel:	
@@ -857,8 +907,20 @@ d0501:		ld	a,(d_utype)		; check if the uart type supports dual channel
 		ld	a,h
 		cp	b
 		ret	nc			; nc=channel number too high
-d0502:		ld	(d_cur_channl),a
+d0502:		ld	(d_cur_channel),a
+		or	a			; channel 0?
+		jr	nz,d_channel1		; nz=no
+d0503:		ld	a,(d_cur_proto0)	; restore protocol for channel 0
+d0504:		ld	hl,(d_cur_speed0)	; restore speed for channel 0
+		jr	d_channel2
+d_channel1:
+d0505:		ld	a,(d_cur_proto1)	; restore protocol for channel 1
+d0506:		ld	hl,(d_cur_speed1)	; restore speed for channel 1
+d_channel2:
+d0507:		ld	(d_cur_proto),a
+d0508:		ld	(d_speed_status),hl
 		ret
+
 
 d_rs_in:	xor	a			; never data received
 		ret
@@ -950,7 +1012,7 @@ loader:
 		jp	nz,check_1
 		ld	de,d_hdr_info		
 		ld	c,9			; print driver info
-		call	5
+		call	BDOS
 		ld	hl,d_tsr_length		; dummy driver variables
 		jp	copy_driver
 
@@ -1020,7 +1082,7 @@ set_hdr_type:	add	a,'0'
 		ld	(hdr_type+4),a		; Update header with uart type
 		ld	de,hdr_info
 		ld	c,9			; print driver info
-		call	5
+		call	BDOS
 		ld	hl,tsr_length		; 1655x driver variables
 
 copy_driver:	; copy driver variables 
@@ -1043,19 +1105,19 @@ copy_driver:	; copy driver variables
 		ld	hl,e_shell
 		ld	de,e_buffer
 		ld	bc,$ff6b		; get environment item
-		call	5
+		call	BDOS
 		ld	hl,e_program
 		ld	c,$6c			; set environment item
-		call	5
+		call	BDOS
 
 		; jump to installer in page 2
 		jp	$8100
 
 notDetected:	ld	de,t_error
 endLoader:	ld	c,9			; print message
-		call	5
+		call	BDOS
 		ld	c,0			; exit to DOS
-		jp	5
+		jp	BDOS
 
 
 t_error:	db	"No UART detected",$0d,$0a,"$"

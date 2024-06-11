@@ -1,5 +1,5 @@
 ; ------------------------------------------------------------------------------
-; FDINFO.ASM - Print fossil driver info v1.0
+; FDINFO.ASM - Print fossil driver info v1.1
 ; Copyright (C) 2024 H.J. Berends
 ;
 ; You can freely use, distribute or modify this program.
@@ -7,21 +7,12 @@
 ; but without any warranty of any kind, either expressed or implied.
 ; ------------------------------------------------------------------------------
 
-		INCLUDE	"fossil.inc"
+		INCLUDE	"fossil.asm"
 
-		ORG	$100
-
-main:		ld	hl,(RS_MARKER)
-		ld	de,RS_FLAG
-		or	a
-		sbc	hl,de
-		jp	nz,noDriver
-
-		ld	hl,RS_GETINFO
-		call	rs_routine
+main:		call	f_get_info
 
 		ld	de,fdInfo
-		call	print
+		call	fd_print
 
 		ld	de,fdVersion+17
 		call	writeBCD
@@ -30,52 +21,27 @@ main:		ld	hl,(RS_MARKER)
 		ld	de,fdVersion+15
 		call	writeBCD
 		ld	de,fdVersion
-		call	print
+		call	fd_print
 
-		ld	de,fdReceive
+		ld	de,fdStatus
+		ld	b,9
+print_status:	push	bc
 		call	printHex
-
-		ld	de,fdSend
-		call	printHex
-
-		ld	de,fdProtocol
-		call	printHex
-
-		ld	de,fdChput
-		call	printHex
- 
-		ld	de,fdKeyboard
-		call	printHex
-
-		ld	de,fdRTS
-		call	printHex
- 
-		ld	de,fdDTR
-		call	printHex
- 
-		ld	de,fdChannel
-		call	printHex
- 
-		ld	de,fdHardware
-		call	printHex
+		pop	bc
+		djnz	print_status
 
 		ld	a,(version2)
 		cp	2
-		jp	c,exit
+		jp	c,fd_exit
 
-		ld	de,fdPort
+		ld	de,fdExtra
+		ld	b,8
+print_extra:	push	bc
 		call	printHex
-
-		ld	de,fdType
-		call	printHex
+		pop	bc
+		djnz	print_extra
  
-		jp	exit
-
-noDriver:	ld	de,notInstalled
-		call	print
-
-exit:		ld	c,0
-		jp	5
+		jp	fd_exit
 
 writeBCD:	ld	a,(hl)
 		inc	hl
@@ -116,34 +82,35 @@ digit1:		ld	(ix+0),a
 		jr	c,digit2
 		add	a,7
 digit2:		ld	(ix+1),a
-print:		push	hl
-		ld	c,9
-		call	5
+		call	fd_print
+		push	hl
+		ld	hl,22
+		add	hl,de
+		ld	d,h
+		ld	e,l
 		pop	hl
 		ret
-		
-rs_routine:	ld	de,(RS_POINTER)	
-		add	hl,de
-		push	hl
-		ld	h,b		
-		ld	l,c
-		ret	
 
-notInstalled:	db	"Fossil driver not installed",$0d,$0a,"$"
 fdInfo:		db	"Fossil driver info:",$0d,$0a
 		db	"-------------------",$0d,$0a,"$"
 fdVersion:	db	"Version      :     ",$0d,$0a,"$"
-fdReceive:	db	"Receive speed:     ",$0d,$0a,"$"
-fdSend:		db	"Send speed   :     ",$0d,$0a,"$"
-fdProtocol:	db	"Protocol     :     ",$0d,$0a,"$"
-fdChput:	db	"Chput status :     ",$0d,$0a,"$"
-fdKeyboard:	db	"Keyb status  :     ",$0d,$0a,"$"
-fdRTS:		db	"RTS status   :     ",$0d,$0a,"$"
-fdDTR:		db	"DTR status   :     ",$0d,$0a,"$"
-fdChannel:	db	"Channel      :     ",$0d,$0a,"$"
-fdHardware: 	db	"Hardware info:     ",$0d,$0a,"$"
+fdStatus:	db	"Receive speed:     ",$0d,$0a,"$"
+		db	"Send speed   :     ",$0d,$0a,"$"
+		db	"Protocol     :     ",$0d,$0a,"$"
+		db	"Chput status :     ",$0d,$0a,"$"
+		db	"Keyb status  :     ",$0d,$0a,"$"
+		db	"RTS status   :     ",$0d,$0a,"$"
+		db	"DTR status   :     ",$0d,$0a,"$"
+		db	"Channel      :     ",$0d,$0a,"$"
+ 		db	"Hardware info:     ",$0d,$0a,"$"
+fdExtra: 	db	"I/O base port:     ",$0d,$0a,"$"
+		db	"UART type    :     ",$0d,$0a,"$"
+	 	db	"Receive  ch 0:     ",$0d,$0a,"$"
+	 	db	"Send     ch 0:     ",$0d,$0a,"$"
+	 	db	"Protocol ch 0:     ",$0d,$0a,"$"
+	 	db	"Receive  ch 1:     ",$0d,$0a,"$"
+	 	db	"Send     ch 1:     ",$0d,$0a,"$"
+	 	db	"Protocol ch 1:     ",$0d,$0a,"$"
 version2:	db	0
-fdPort: 	db	"I/O base port:     ",$0d,$0a,"$"
-fdType: 	db	"UART type    :     ",$0d,$0a,"$"
 
 
