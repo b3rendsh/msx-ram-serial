@@ -458,10 +458,10 @@ p0801:		ld	hl,(inbufnumber)
 
 ; p09 ------------------------------------------
 rs_out_stat:
-p0901:		ld	a,(ubase+UART_LSR)
+p0901:		ld	a,(ubase+UART_MSR)
 		ld	c,a
 		in	a,(c)
-		and	$20
+		and	$10
 		ret	z
 		or	$ff
 		ret
