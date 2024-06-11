@@ -1,0 +1,316 @@
+
+	    XMODEM - REMOTE CP/M FILE TRANSFER PROGRAM
+
+  This program allows a remote user to transfer files (to or from) RCPM
+  systems running under BYE (remote console program).
+
+  ----------------------------------------------------------------------
+		  Updates and revisions (rev order)
+  ----------------------------------------------------------------------
+
+
+   v12.5	Fixed conditional assembly bug which caused date to
+  07/13/86	appear in log twice when MBBS and BYEBDOS were both set
+		to YES.
+		Fixed conditional assembly bug which did not allow MBFMSG
+		to be set to YES while MBDESC was set to NO.
+		Removed patch to log download before sending EOF because
+		EOF would not be sent, leaving caller's program in file
+		transfer mode, if LOGCALL routine exited with an error.
+		This problem was noticed by Keith Petersen.
+		Modified to abort any download which would result in a
+		user exceeding his time limit when BYEBDOS is YES.
+		Fixed bug which would cause caller to be logged off
+		without updating log file if transmission errors caused
+		his download to put him over time limit when BYEBDOS was
+		YES and CLOCK and TIMEON in BYE were YES (call to TCHECK
+		in BYE's extended BDOS call would hang up on caller).
+		Revised comments for some equates to make them easier to
+		understand.
+						- Murray Simsolo
+
+   v12.4	Fixed so that upload area is NOT asked if "XMODEM"
+  03/13/86	only typed (still asked if "XMODEM A" is used.)
+		Also fixed so upload area is NOT asked if the "RM"
+		function is being used to upload a message file.
+		New features: New uploads are made $SYS files if
+		the SYSNEW option is enabled. This makes it easy
+		to keep files in the right place, all you have to
+		do is reset the file attributes. A NEWPRV option
+		for the MBDESC option makes all new uploads private
+		messages to SYSOP (new MWHATS30 has "O" (for OK)
+		option to make private upload descriptions public
+		for sysop use only). I also fixed bugs that were
+		putting characters with high bits in the log file
+		and possibly in upload descriptions as well.
+		Also a bug in the CONTIN: area spotted by Michael
+		Conley was also fixed.
+					-- Kim Levitt
+					   MBBS HQ PDSE (213) 653-6398
+
+  ----------------------------------------------------------------------
+
+   v12.3	Well, I blew the SPCDU stuff!. I guess I didn't un-
+  03/05/86	derstand how the LOGDU really worked. The only prob-
+		lem it should have caused is that the Sysop would
+		have gotten the wrong description of which D/U he
+		was going to upload to. These are now fixed. The Sysop
+		can put the file in the current D/U or specify the
+		D/U he wants a file to go to. Also fixed four BDOS
+		equates noticed by Bill Duerr: The BDNULL and BDTOUT,
+		and the BDHRDL and BDWRTL equates did not agree with
+		the BYE339 jump table.	BDWRTL is the one that may
+		cause problems. XMODEM said BDWRTL was 76.  BYE said
+		it was 75. These are also fixed now.
+					-- Russ Pencin
+					   Dallas Connection (214) 238-1016
+					   300/1200/2400 baud, 24 hrs.
+
+========================================================================
+
+   v12.2	Added error check for library read functions to abort
+   02/22/86	on read error. Revamped the upload file description
+		code to show the sysop ( if ZCPR2 ) the actual D/U
+		that he will be uploading the file to. Revamped the
+		ASKAREA code to skip asking the sysop what area.
+		Removed the BYEBDOS conditional for LOGCAL which kept
+		BYEBDOS systems from getting the VRECNO and correct
+		file time (near EOT1:). Consolidated BYECHK to work
+		with BYEBDOS or others to allow the ACCESS checking
+		to be a stand-alone equate (no longer tied to MBBS).
+		Added ASKSYS equate to set whether sysop wants to
+		be asked for file descriptions or not. Added ASKIND
+		equate to allow category descriptions for uploaded
+		files. Moved WRTLOC and CONFUN to a miscellaneous
+		flag area so they won't be confused with the MBBS
+		equates. Added BYEBDOS conditionals to all B3RTC
+		code to insure no conflict of equates.
+					-- Russ Pencin
+					   Dallas Connection (214) 238-1016
+					   300/1200/2400 baud, 24 hrs.
+
+========================================================================
+
+  v12.1 	Fixed bugs in RTC handling for MBYE systems, other bugs
+  01/14/86	remaining since v11.7. Added modified XMDM10XX patch
+		so that systems supporting multiple operating systems
+		and/or computers can separate uploads into different
+		upload areas. (XMDM10XX patch by Russ Pencin of the
+		Dallas Connection RCP/M.) XMDM119.FIX fixes by Brian
+		Rau (COG-RCP/M sysop) were also included. (Some of
+		these were included in XMDM120 by Irv Hoff in parallel.)
+		Also removed unnecessary blank lines and ENDIF comments,
+		(no need to comment ENDIFs on short sections of con-
+		ditional code, although is helpful on longer sections),
+		and reduced amount of code by creating subroutines.
+		Equates set up for a ZCPR/MBBS system. Added NDESC option
+		so "XMODEM RN FILE.TYP" will allow a user to bypass
+		the DECRIB or MBDESC optional description input (for
+		uploads that are pre-arranged or need no description.)
+		Also added SYSABT option (for CONFUN users) to allow
+		the sysop to abort up or downloads with ^X on system
+		console. (Suggested by Robert Crump.)
+					-- Kim Levitt
+					   MBBS HQ PDSE (213) 653-6398
+					   300/1200/2400 baud, 24 hrs.
+
+  ----------------------------------------------------------------------
+
+  01/11/86  There have been several XMDM119 'bug' and 'fix' notes cir-
+    v12.0   culating.  Incorporated the change to the "TIME:" routine
+	    suggested by Russ Pencin - he added a PUSH-POP PSW to keep
+	    the value in the 'A' register that contains the logon hour
+	    from being destroyed, making the program think the user had
+	    exceeded his maximum time limit.  Also several changes sug-
+	    gested by Brian Rau, although one was not added as it would
+	    have had undesired results if using equates in the EXIT area
+	    different from his selection.
+
+	    Keith Petersen had a problem recently that caused my getting
+	    involved in checking out the program.  He had a disk problem
+	    which allowed XMODEM to go ahead and read data from a bad
+	    record into the 'send' buffer, which was then sent as valid
+	    data.  He mentioned there was possibly an error in the read
+	    routine, not only in XMODEM but perhaps in KMD as well.  So
+	    I started checking that area very carefully and found that
+	    both programs handle that correctly - if the BDOS call #20
+	    (read next record) returns with 00H, the read was ok.  If it
+	    returns with a 01H, it was an end of file.	Anything else is
+	    an error and can be handled as such.  Studying the "RDBLOCK"
+	    routine (in both XMODEM and KMD) shows this is being handled
+	    correctly, with a "File read error" statement printed if the
+	    BDOS call cannot get a valid read.
+
+	    Checking with a number of SYSOPs reveals similar action on a
+	    wide variety of equipment - if a bad sector prevents a good
+	    read, normally the computer stops at that point, displaying:
+
+			    Disk Err on B: Bad Sector
+
+	    I suspect you have all seen that at one time or another.  It
+	    usually takes a CR or CTL-C to again put the computer into
+	    operation, at which time it "appears" to be reading normally
+	    but in reality almost certainly has different information
+	    from what it should.
+
+	    It would appear there is nothing the user can do about this,
+	    except to run FBAD on the disk system periodically and hope
+	    no bum sectors show up - however the bad sector usually does
+	    stop the machine at that time, notifying the operator he has
+	    a problem and preventing further downloads at that moment.
+
+	    Anybody ambitious to do an update should consider cleaning
+	    up the mess the CP/M+ section(s) are in.  There are areas of
+	    unused code (no labels calling them) ahead of LOOP: GETBTIM:
+	    and GETBDAT: routines - perhaps other places as well.
+
+	    Also restored the conditional calls in the comment field af-
+	    ter the ENDIF statements.  Many SYSOPs felt those were quite
+	    valuable in following the progress of various routines, par-
+	    ticularly if they wanted to customize the program for their
+	    own use.
+					- Irv Hoff
+
+  ----------------------------------------------------------------------
+
+  01/01/86  Fixed bug in LOGCAL which caused a download to record in
+    v11.9   XMODEM.LOG as A0> regardless of actual drive/user.	Elimi-
+	    nated MBYETOS equate.  Now anyone running BYE3 or MBYE with
+	    an RTC can use maximum time on system to limit download time
+	    tines, and some unused labels removed.
+					- Murray Simsolo
+
+  ----------------------------------------------------------------------
+
+  11/02/85  New version that will allow a "RM" function to upload a mes-
+    v11.8   a message file for entry in a MBBS system running MBYE v4.1
+	    and up with MFMSG.COM v2.0 and up.	Also fixed so MBDESC
+	    will show disk/user area file uploaded to in the NEW UPLOAD:
+	    filename display.  Also, I included an update by Lavern Og-
+	    den that enables MBYE users to have a user's max time on
+	    system be used in the calculations for time allowed for
+	    downloads.				- Kim Levitt
+
+  ----------------------------------------------------------------------
+
+  09/08/85  Added patch so MBBS used to enter upload descriptions into
+    v11.7   into message file.	(MBYE40 and MBBS40 needed for this.)
+	    Also added Murray Simsolo's XMDM116.FIX and a variation of
+	    Mark Motley's fix to clear the WRTLOC flag when the "help"
+	    message is displayed.  The user can abort it and his TOSEXIT
+	    equate to make the TOS display an option on exit.  Also made
+	    it so that instead of time on system being reset, max time
+	    allowed on is adjusted instead if a user uploads a file.
+	    Added LOGSYS equate to pick the old LOG.SYS filename as new
+	    MBBS will work with XMODEM.LOG as well as LOG.SYS now.  Also
+	    added DWNTAG option so files tagged with "F3" status attri-
+	    bute can be downloaded regardless of access privileges.
+	    Fixed bugs introduced into v116 by Paul Traina (he eliminat-
+	    ed needed WRTLOC clear in DESCRIB optional code).  NOTE:
+	    Read MURPHY'S LAWS re: computer program bug fixes.	(IF NOT
+	    TURKEY).  (Although I didn't like all of Steve's "fixes", I
+	    was trying to integrate his updates with John Hoffman.  The
+	    The old NOT X and NOT Y might have been more confusing than
+	    than NOT (X or Y) but either works.  But (NOT X or Y) is NOT
+	    the same thing.  Changed OK2400 comments to reflect change
+	    in code by Paul Traina.) Added code so ^X, pause, ^X will
+	    abort an upload.			- Kim Levitt
+
+  ----------------------------------------------------------------------
+
+  08/11/85  Fixed bugs introduced between 112 and 115.	Added Kevin Mur-
+    v11.6   phy's changes to let BYEBDOS systems to gain time on system.
+	    (Note: Must be using BYE338 for this to work properly.  If
+	    you are running BYE337, please upgrade to v338, as v338 cor-
+	    responds to the documentation and changes the way one of the
+	    BYEBDOS call functions works).	- Paul Traina
+
+  ----------------------------------------------------------------------
+
+  08/10/85  Fixed a bug in the "turkey patch" that could cause double
+    v11.5   entries in the log file for uploads or worse.  Eliminated
+	    "thru packet " in message to console that is unnecessary and
+	    was leaving last packet number on console screen at end of
+	    downloads if a file is sent which requires small packets at
+	    the end.  Also I fixed the version number.	(This is #11.5
+	    not 1.15 or 115.)  Incorporated code from John Hoffman's
+	    11.3 update and Steve Sanders' 11.4 update to bring out one
+	    version with all bugs fixed and features together again (I
+	    hope).  Made some of Steve's feature patches optional.
+	    (DSPFNAM for display file name option, MBYE37 equate renamed
+	    to MBYETOS.)		- Kim Levitt
+
+  ----------------------------------------------------------------------
+
+  08/10/85  Steve Sanders' version.  (Did not include v113 updates.)
+    v11.4   LUXMOD equate added so XMODEM can be configured to	work as
+	    a LUXMODEM program.  XM-FNAM2.ADD patch added to display se-
+	    lected file name on downloads and uploads so user can verify
+	    system didn't get garbage for the filename.  Fixed TAGLBR
+	    option to work correctly.  Misc. cleanup up and changes.
+					- Steve Sanders
+
+  ----------------------------------------------------------------------
+
+  08/09/85  This version does not add any new features, what it does is
+    v11.3   is to get all of the known patches together in one place so
+	    that future revisions of this program, will eliminate the
+	    problem, of seeing what patches, and fixes have been carried
+	    through.			- John Hoffman
+
+  ----------------------------------------------------------------------
+
+  07/16/86  1)	Added universal I/O option for users of Bye > 3.37 if
+    v11.2	BYEBDOS is set, then a large section of equates are not
+		used.  At the current time, xmodem expects you to have a
+		RTC if BYEBDOS is set.
+	    2)	Added in fixes from XMDM110.FX2, thanks for the patch.
+		My appologies to the people I messed up.  Courtesy of:
+		Steve Saunders, Richie Dervan, Ron Mani.
+	    3)	Re-wrote options selection section. Talk about spaghetti
+		code.  It's much cleaner now, adding function "RX".
+	    4)	1k request ignored if user is calling in at 300 baud.
+	    5)	If user types "R" - system sends "CK" instead of "C".
+		This is transparent to all present modem programs other
+		than ProYAM for MS-DOS 16-bit computers.  With ProYAM,
+		when uploading a file, the first block will have to be
+		resent, or the user can type "RX" to disable this auto-
+		protocol select flag.  This change does not affect the
+		current "1k" protocol, it's really a great idea...cour-
+		tesy of Irv Hoff.
+	    6)	Local console display mimicks MEX114 in 1k mode.
+					- Paul Traina
+
+  ----------------------------------------------------------------------
+  07/21/85  1)	Reincorporated the use of ERRCDE, which had been partly
+    v11.1	ially removed from the program, as an assembly time op-
+		tion.  The external overlay passes a code in Reg. A when
+		a parity, overrun or framing error is detected.  Other-
+		wise Reg. A=0.	This could be important to some users
+		who may be using checksum instead of CRC.
+	    2)	Added a version (last edit) date, which appears when the
+		program signs-on.
+	    3)	Compressed the help/example screen
+	    4)	Added routines for a BIOS, binary clock at GETTIME &
+		 GETDATE		- Don Brown
+
+  ----------------------------------------------------------------------
+
+  07/20/85  1)	corrected send time for 1k packets to be more accurate.
+    v11.0	XMDM110 looks to see what block size we use.  (Thanks go
+		to Irv Hoff for the table entries.)
+	    2)	changed send-time to print "mm:ss" instead of "mm mins,
+		ss secs"
+	    3)	Removed equate OLDRBBS, not necessary because LASTCALR
+		FCB looks for any file with the firstname of "LASTCALR".
+	    4)	Changed MBRTC to B3RTC (and sub-equates) because BYE335
+		and newer have compatible RTC capability.
+	    5)	Added an equate "OXGATE".  If B3RTC (previously called
+		MBRTC) or RTC is set to true, then OXGATE equate takes
+		effect.  This equate tells the system to stop reading
+		data from the last caller file after the second comma.
+		(The date was getting printed twice.
+					- Paul Traina
+
+  ----------------------------------------------------------------------
+
