@@ -51,16 +51,23 @@ The design of the cart was made so it is easy to build for anyone with basic sol
 
 ## Software
 
-MSX software that is designed to work with a 16550 UART most likely also works with the 16552 UART channel A. 
+[Fossil driver and tools](fossil/)
 
-I've tested the cart with the fossil driver and Erix terminal on a MSX2 machine and could exchange text and files with a PC using Tera Term.
+A new 1655x fossil driver v2 and tools are created that utilize the dual channel 16552 capabilities. 
+It will also work with a single channel 16550 and requires MSX1 / MSXDOS 1 or higher.
+
+The new fossil tools like xmodem are designed to be backward compatible if possible, meaning they may also work
+with the fossil driver v1.40 for vintage MSX RS232 peripherals.
+
+Other MSX software that is designed to work with a 16550 UART most likely also works with the 16552 UART channel A. 
 
 ### Work in progress / wishlist
 
  - ✔️ Custom 16552 fossil driver to choose channel A or B and select I/O ports
+ - ✔️ Xmodem file exchange program (uses fossil driver)
+ - ✔️ VT52 serial console (uses fossil driver)
  - ⬜ RS232C BASIC Extension BIOS (loaded in RAM)
- - ⬜ Xmodem file exchange program for MSX1
- - ⬜ VT100 serial console for MSX1 and MSX2 (server not client)
+ - ⬜ VT100 serial console (server not client)
  - ⬜ 80 columns support with the serial console for MSX1
  - ⬜ UNAPI TCP/IP with ESP01 Wifi (use/adapt one of the existing solutions)
  - ⬜ Use serial console with CP/M Plus
