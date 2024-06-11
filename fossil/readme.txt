@@ -48,7 +48,6 @@ XM.COM
 ------
 Send and receive files with the xmodem file transfer protocol.
 To support higher baudrates use RTS/CTS serial port setting at the other end.
-To exchange files between 2 MSX computers use 9600 baud or lower.
 Type "XM" with no parameters for help.
 
 

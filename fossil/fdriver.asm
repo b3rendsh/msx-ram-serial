@@ -437,11 +437,11 @@ eiret:		ei
 rs_out:		ei
 		ld	b,a
 rs_out1:
-p0701:		ld	a,(ubase+UART_LSR)
+p0701:		ld	a,(ubase+UART_MSR)	; bugfix: use register MSR:CTS not LSR:THRE flag
 		ld	c,a
 		in	a,(c)
-		and	$20
-		jr	z,rs_out1
+		and	$10			; CTS: clear to send ?
+		jr	z,rs_out1		; z=no
 p0702:		ld	a,(ubase+UART_THR)
 		ld	c,a
 		out	(c),b
