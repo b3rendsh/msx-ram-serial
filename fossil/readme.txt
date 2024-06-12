@@ -33,8 +33,8 @@ configuration of the supported channels.
 FMODE.COM
 ---------
 With this tool you can set the speed and protocol for a channel, for use 
-with applications that don't include channel configuration.
-Type "FMODE H" for help.
+with applications that don't include channel configuration. See configuration
+information below. Type "FMODE" with no parameters for help.
 
 
 FCHANNEL.COM
