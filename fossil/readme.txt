@@ -18,9 +18,6 @@ There's an example FOSSIL.BAT in the BIN folder:
 It starts the fossil driver and then the Erix terminal if there is a 
 C:\ERIX folder with these programs.
 
-Version 2.1 includes a dummy driver and preset configurations.
-The interrupt driven receive buffer routines have been revised.
-Version 2.2 saves separate speed and protocol settings for each channel,
 Type "FDRIVER H" for help.
 
 
