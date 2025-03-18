@@ -1,5 +1,5 @@
 ; ------------------------------------------------------------------------------
-; FDRIVER.ASM - Fossil Driver 1655X v2.2
+; FDRIVER.ASM - Fossil Driver 1655X v2.3
 ; Copyright (C) 2024 H.J. Berends
 ;
 ; Parts of the code and comments are derived from sources created by Erik Maas:
@@ -13,6 +13,8 @@
 ; It is based on the fossil driver specification by Erik Maas.
 ; Changes:
 ; --------
+; V2.3:
+; + Fixed loader issues when using DOS1
 ; V2.2:
 ; + Separate current speed/protocol info for channel 0 and 1
 ; V2.1:
@@ -405,7 +407,7 @@ p0601:		ld	hl,(inbufnumber)
 		jr	z,eiret 		; z=no
 		dec	hl
 p0602:		ld	(inbufnumber),hl	
-		ld	de,UARTBUF/2
+		ld	de,UARTBUF/4
 		or	a			; clear carry
 		sbc	hl,de			; bytes in buffer lower than threshold?
 		jr	nc,rs_in_1		; nc=no 
@@ -668,7 +670,7 @@ p2104:		ld	a,(ubase+UART_RBR)
 		inc	hl
 p2105:		ld	(inbufnumber),hl
 		push	de
-		ld	de,UARTBUF*2/3
+		ld	de,UARTBUF*3/4
 		or	a			; clear carry
 		sbc	hl,de			; bytes in buffer higher than threshold?
 		jr	c,int_rs_in2		; c=no
@@ -770,8 +772,8 @@ ubase:		db	0,1,2,3,4,5,6,7		; UART register ports set at runtime
 		DEPHASE			
 
 tsr_length:	dw	$-tsr_start		; size of the driver code
-
-		dw	tsr_start
+		dw	tsr_start-rel_tab	; offset for start of driver code
+		dw	tsr_length-rel_tab	; size of driver code + relocation table
 		dw	rel_tab
 		dw	fh_keyi
 		dw	fh_aux_out
@@ -972,8 +974,8 @@ d_fo_timi:	ds	5,$c9
 		DEPHASE			
 
 d_tsr_length:	dw	$-d_tsr_start		; size of the driver code
-
-		dw	d_tsr_start
+		dw	d_tsr_start-d_rel_tab	; offset for start of driver code
+		dw	d_tsr_length-d_rel_tab	; size of driver code + relocation table
 		dw	d_rel_tab
 		dw	d_fh_keyi
 		dw	d_fh_aux_out
@@ -1088,7 +1090,13 @@ set_hdr_type:	add	a,'0'
 copy_driver:	; copy driver variables 
 		; hl contains source location
 		ld	de,DRV_VAR
-		ld	bc,18
+		ld	bc,20
+		ldir
+
+		; copy the driver data to page 2 so the BIOS can be loaded in page 0
+		ld	de,DRV_CODE		; temporary storage area
+		ld	hl,(DRV_RELTAB)		; start address of unrelocated driver data
+		ld	bc,(DRV_TOTLEN)		; length of relocation table + driver code
 		ldir
 		
 		; copy installer to $8100
@@ -1207,23 +1215,45 @@ uart_type:	db	0
 installer:
 		PHASE	$8100
 
-install:	ld	sp,$c200
+install:	di
 
+		; DOS1: the ENASLT routine cannot be called directly to load the BIOS in page 0
+		; and the routine that is in page 3 gets overwritten by the fossil driver code.
+		; Universal solution: copy the call to the MSX-DOS ENASLT routine in page 3
+		; and load the BIOS in page 0 before installing the fossil driver
+		ld	hl,ENASLT
+		ld	de,my_enaslt
+		ld	bc, 4
+		ldir
+		ld	a,(EXPTBL)		; Main BIOS slot
+		ld	h,$00			; page 0
+		call	my_enaslt
+
+		; load BASIC in page 1
+		ld	a,(EXPTBL)		; BASIC slot
+	        ld      h,$40			; page 1
+	        call    my_enaslt
+
+		ld	sp,$c200
+
+		; allocate memory for the fossil driver
 		ld	hl,(HIMSAV)		; MSXDOS highmem
 		ld	de,(DRV_LENGTH)
 		or	a
 		sbc	hl,de			; calculate driver address
 		ld	(HIMSAV),hl		; set new highmem
 
-		; copy driver to destination
+		; copy driver code to final destination
 		ex	de,hl			; set de to tsr address
-		ld	hl,(DRV_START)		; start address of unrelocated driver code
+		ld	hl,(DRV_START)		; offset for start of driver code
+		ld	bc,DRV_CODE
+		add	hl,bc
 		ld	bc,(DRV_LENGTH)
 		ldir
 
 		; Adapt relocated driver code
 		ld	de,(HIMSAV)		; start address of program
-		ld	hl,(DRV_RELTAB)		; relocation table
+		ld	hl,DRV_CODE		; relocation table
 adapt:		ld	c,(hl)
 		inc	hl
 		ld	b,(hl)			; bc = patch address
@@ -1256,8 +1286,7 @@ adapt1:		inc	hl
 		pop	hl
 		jp	adapt
 
-sethook:	di
-		ld	de,(HIMSAV)
+sethook:	ld	de,(HIMSAV)
 		ld	a,$c3
 
 		ld	hl,(DRV_KEYI)		; redirect H.KEYI to fossil driver
@@ -1308,46 +1337,21 @@ channel_ad:	call	0			; call channel
 		add	hl,de
 		ld	(deinit_ad+1),hl
 deinit_ad:	call	0			; call deinit
-		ei
 
-		; check dos version and call system
+		ld	hl,call_system2
 		ld      a,(DOSVER)
 		cp      $22			; DOS version 2.2 or higher?
-		jp	nc,load_dos2
+		jr	nc,cmd_system		; nc=yes
 
-		; In DOS1 the MSXDOS ENASLT routine cannot be used
-		; Load BIOS: enable page 0 in slot 0
-load_dos1:	di
-		in	a,($a8)
-		and	$fc
-		out	($a8),a
-		ld	a,($ffff)
-		cpl
-		and	$fc
-		ld	($ffff),a
-		ei
-		; Load BASIC in page 1
-		ld	a,(EXPTBL)
-		ld	h,$40
-		call	ENASLT			; Use ENASLOT from BIOS
+		; DOS 1: set default drive and call system command
+		xor	a
+		ld	(CURDRV),a
 		ld	hl,call_system1
-		push	hl
-		jp	cmd_system
-		
-	
-		; DOS2: jump to basic and do _system
-		; code snippet derived from ramhelpr.asm by Konamiman
-load_dos2:     	ld	a,(EXPTBL)		; Main BIOS slot
-	        push    af
-        	ld      h,0			; page 0
-	        call    ENASLT
-	        pop     af
-	        ld      h,$40			; page 1
-	        call    ENASLT
-		ld	hl,call_system2
-		push	hl
 
-cmd_system:	xor	a
+		; jump to basic and do _system
+		; use code snippet from ramhelpr.asm by Konamiman
+cmd_system:	push	hl
+		xor	a
 		ld	hl,$f41f
 		ld	($f860),hl
 		ld	hl,$f423		
@@ -1358,9 +1362,10 @@ cmd_system:	xor	a
 		ld	(hl),a
 		ld	hl,$f42c
 		ld	($f862),hl
-
 		pop	hl
 		jp	NEWSTT
+
+my_enaslt:	db	0,0,0,0
 
 call_system1:	db	":_SYSTEM",$00
 call_system2:	db	":_SYSTEM(\"FOSSIL.BAT\")",$00
@@ -1369,15 +1374,17 @@ call_system2:	db	":_SYSTEM(\"FOSSIL.BAT\")",$00
 
 inst_length:	EQU	$-installer
 
-; Dynamic driver variables
+; Dynamic driver variables / workspace
 DRV_VAR		equ	$9000
 DRV_LENGTH	equ	$9000
 DRV_START	equ	$9002
-DRV_RELTAB	equ	$9004
-DRV_KEYI	equ	$9006
-DRV_AUXOUT	equ	$9008
-DRV_AUXIN	equ	$900A
-DRV_CHPUT	equ	$900C
-DRV_HTIMI	equ	$900E
-DRV_OTIMI	equ	$9010
+DRV_TOTLEN	equ	$9004
+DRV_RELTAB	equ	$9006
+DRV_KEYI	equ	$9008
+DRV_AUXOUT	equ	$900A
+DRV_AUXIN	equ	$900C
+DRV_CHPUT	equ	$900E
+DRV_HTIMI	equ	$9010
+DRV_OTIMI	equ	$9012
+DRV_CODE	equ	$9014
 

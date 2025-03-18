@@ -7,6 +7,7 @@ BDOS		equ	$05		; BDOS functions (CP/M 2.2)
 VDP_STATUS	equ	$99		; TMS9918A status register (read)
 ENASLT		equ	$0024		; ENASLT routine
 NEWSTT		equ	$4601		; BASIC execute a text
+CURDRV		equ	$f247		; Default drive (DOS1)
 DOSVER 		equ     $f313		; MSXDOS version
 HIMSAV  	equ	$f349		; MSXDOS highmem
 H_AUXINP	equ	$f371		; AUXINP hook
@@ -76,7 +77,7 @@ D_SPEED		equ	$07		; Default speed (19200)
 ; UART 16550 / 16552
 
 UARTBUF		equ	256		; Receive buffer (increase if receive errors)
-UARTVER		equ	$0221		; BCD driver version number
+UARTVER		equ	$0230		; BCD driver version number
 
 UART_RBR	equ	0		; dlab=0: receiver buffer register (read)
 UART_THR	equ	0		; dlab=0: transmitter holding register (write)
