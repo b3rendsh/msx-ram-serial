@@ -6,7 +6,9 @@
 This repository contains the design for a MSX cartridge that features a 512KB RAM mapper and 2 ports PV16552 serial interface.
 
 Both features are not dependent on hardware level so you can choose to only populate the RAM components on the right side or serial components on the left side of the 
-cartridge if you don't need the other feature.   
+cartridge if you don't need the other feature.
+
+Together with an IDE storage cart (BEER/MALT/SODA) it provides memory and serial ports to fully run RomWBW CP/M and work-alike operating systems on a MSX.
 
 ## Hardware
 
@@ -27,9 +29,11 @@ Pin assignment left to right: GND,RTS,5V,RX,TX,CTS
 
 Fit a jumper to JP1 or JP2 to provide +5V to the connected device (default not fitted) e.g. for usage with an ESP01 + adapter module.  
 
-Jumpers JP3 and JP4 determine the I/O port range:
-Connect the upper 2 pins for 0x80 to 0x8F
-Connect the lower 2 pins for 0x20 to 0x2F
+Jumpers JP3 and JP4 determine the I/O port range:  
+Connect the upper 2 pins for 0x80 to 0x8F  
+Connect the lower 2 pins for 0x20 to 0x2F  
+
+Note: the PV16552 FIFO buffers are not usable in polled mode.
 
 ### Build instructions
 
@@ -44,10 +48,13 @@ The design of the cart was made so it is easy to build for anyone with basic sol
  - Populate the PCB with the components
  - Set the jumpers
  - Minimal test with a multi-meter the resistance between +5V and GND that there is no short circuit
- - The cart should fit in a Konami type case with some cutouts (I have not tested this)
+ - The cart fits in a Konami type case with some cutouts
 
 ![alt text](hardware/images/msx%20ram-serial%20connectors%20and%20jumpers.jpg?raw=true "Connectors and Jumpers")
 
+The default 1.8432Mhz clock works with most 3d party software, the hardware also supports other frequencies like a 18.432Mhz clock.
+
+Connecting an ESP01 with Zimodem to one of the serial ports, for use with BBS or EMinEx applications, requires a small adapter board with 5V level shifters.
 
 ## Software
 
@@ -56,27 +63,19 @@ The design of the cart was made so it is easy to build for anyone with basic sol
 A new 1655x fossil driver v2 and tools are created that utilize the dual channel 16552 capabilities. 
 It will also work with a single channel 16550 and requires MSX1 / MSXDOS 1 or higher.
 
-The new fossil tools like xmodem are designed to be backward compatible if possible, meaning they may also work
-with the fossil driver v1.40 for vintage MSX RS232 peripherals.
+The new fossil tools like xmodem are designed to be backward compatible if possible, meaning they may also work with the fossil driver v1.40 for vintage MSX RS232 peripherals.
 
-Other MSX software that is designed to work with a 16550 UART most likely also works with the 16552 UART channel A. 
+RomWBW CP/M for MSX is fully supported: in addition to the CRT you get 2 serial ports for use as a VT100 console or transfer files with xmodem.
 
-### Work in progress / wishlist
+The MSX JIO serial disk interface can be used with this cart instead of the software serial / joystick port.
 
- - ✔️ Custom 16552 fossil driver to choose channel A or B and select I/O ports
- - ✔️ Xmodem file exchange program (uses fossil driver)
- - ✔️ VT52 serial console (uses fossil driver)
- - ⬜ RS232C BASIC Extension BIOS (loaded in RAM)
- - ⬜ VT100 serial console (server not client)
- - ⬜ 80 columns support with the serial console for MSX1
- - ⬜ UNAPI TCP/IP with ESP01 Wifi (use/adapt one of the existing solutions)
- - ⬜ Use serial console with CP/M Plus
+Other MSX software and hardware add-ons that are designed to work with a 16550 UART most likely also work with the 16552 UART channel A. 
 
 ## Disclaimer
 Build and use at your own risk! There is no warranty of any kind, either expressed or implied, that this cart will work with your MSX machine and/or software. 
 
 ## License
 
-Copyright (C) 2024 H.J. Berends
+Copyright (C) 2026 H.J. Berends
 
 This work is licensed under a <a href="http://creativecommons.org/licenses/by-nc-sa/4.0/" rel="nofollow">Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License</a>.
