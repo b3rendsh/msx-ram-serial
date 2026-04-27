@@ -20,6 +20,8 @@ C:\ERIX folder with these programs.
 
 Type "FDRIVER H" for help.
 
+FDRX10.COM is the fossil driver for a 1655X UART with a 18.432Mhz clock.
+
 
 FDINFO.COM
 ----------
@@ -81,7 +83,7 @@ Baudrates:
  9 =  57600
 10 =  76800 (not supported)
 11 = 115200
-12 = 230400 (not supported)
+12 = 230400 (requires 18.432Mhz clock)
 
 Default baudrate is 19200 (7)
 

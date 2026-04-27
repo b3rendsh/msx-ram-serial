@@ -37,6 +37,8 @@ fdriver:
 	@echo Assembling..
 	z80asm -b -l -m -Oobj -o=fdriver.com fdriver.asm
 	$(CP) obj$/fdriver.com $(BIN)$/FDRIVER.COM
+	z80asm -DHZX10 -b -l -m -Oobj -o=fdrx10.com fdriver.asm
+	$(CP) obj$/fdrx10.com $(BIN)$/FDRX10.COM
 	@echo done
 
 fmode:	

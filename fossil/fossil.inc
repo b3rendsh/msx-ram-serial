@@ -77,7 +77,7 @@ D_SPEED		equ	$07		; Default speed (19200)
 ; UART 16550 / 16552
 
 UARTBUF		equ	256		; Receive buffer (increase if receive errors)
-UARTVER		equ	$0230		; BCD driver version number
+UARTVER		equ	$0231		; BCD driver version number
 
 UART_RBR	equ	0		; dlab=0: receiver buffer register (read)
 UART_THR	equ	0		; dlab=0: transmitter holding register (write)

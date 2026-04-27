@@ -1,6 +1,6 @@
 ; ------------------------------------------------------------------------------
-; FDRIVER.ASM - Fossil Driver 1655X v2.3
-; Copyright (C) 2024 H.J. Berends
+; FDRIVER.ASM - Fossil Driver 1655X v2.31
+; Copyright (C) 2026 H.J. Berends
 ;
 ; Parts of the code and comments are derived from sources created by Erik Maas:
 ; see driver140 folder for the 16550 driver 1.40
@@ -13,6 +13,8 @@
 ; It is based on the fossil driver specification by Erik Maas.
 ; Changes:
 ; --------
+; V2.31:
+; + Added 18.432Mhz clock build option
 ; V2.3:
 ; + Fixed loader issues when using DOS1
 ; V2.2:
@@ -55,9 +57,16 @@ hdr_info:	db	"Fossil driver v"		; Driver version
 		db	'0'+(UARTVER/16) % 16
 		db	'0'+(UARTVER % 16)
 		db	$0d,$0a
+	IFDEF HZX10
+		db	"18.432Mhz clock"
+	ELSE
+		db	"1.8432Mhz clock"
+	ENDIF
+		db	$0d,$0a
 hdr_type:	db	"1655X UART+FIFO, port "	; Interface
 hdr_port:	db	"0"
 		db	"x",$0d,$0a,"$"
+		db	$1a				; end of text
 
 ; ------------------------------------------------------------------------------
 ; 1655x - Driver relocation table
@@ -328,6 +337,22 @@ p0309:		ld	a,(ubase+UART_LCR)
 		ei
 		ret
 
+	IFDEF HZX10
+; Speedtable for 18,432 MHz
+speedtable:	dw	15360		;0 75
+		dw	3840		;1 300
+		dw	1920		;2 600
+		dw	960		;3 1200
+		dw	480		;4 2400
+		dw	240		;5 4800
+		dw	120		;6 9600 
+		dw	60		;7 19200
+		dw	30		;8 38400
+		dw	20		;9 57600
+		dw	20		;A 76800 (not supported)
+		dw	10		;B 115200
+		dw	5		;C 230400
+	ELSE
 ; Speedtable for 1,8432 MHz
 speedtable:	dw	1536		;0 75
 		dw	384		;1 300
@@ -342,6 +367,7 @@ speedtable:	dw	1536		;0 75
 		dw	2		;A 76800 (not supported)
 		dw	1		;B 115200
 		dw	1		;C 230400 (not supported)
+	ENDIF
 
 ; p04 ------------------------------------------
 protocol:	ld	a,h
